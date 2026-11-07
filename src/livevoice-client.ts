@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { LiveVoiceApi, LiveVoiceApiError, type RequestBudget } from './api.js'
-import { mapImportState, toChannel } from './state.js'
+import { mapImportState, planSourceLanguageChange, toChannel } from './state.js'
 import type { ApiEvent, LiveVoiceChannel, LiveVoiceEventState } from './types.js'
 import type { ChannelStateChange } from './webhook.js'
 
@@ -52,6 +52,7 @@ export class LiveVoiceClient extends EventEmitter {
 	private stopped = true
 	private lastBudgetWarning = 0
 	private readonly seenDeliveries: string[] = []
+	private languageChangeRunning = false
 
 	constructor(
 		private readonly hooks: {
@@ -282,7 +283,10 @@ export class LiveVoiceClient extends EventEmitter {
 					!old ||
 					old.name !== channel.name ||
 					old.hasAudioInput !== channel.hasAudioInput ||
-					old.hasAiTranslation !== channel.hasAiTranslation
+					old.hasAiTranslation !== channel.hasAiTranslation ||
+					old.hidden !== channel.hidden ||
+					old.spokenLanguages.join(',') !== channel.spokenLanguages.join(',') ||
+					(old.aiLanguages ?? []).join(',') !== (channel.aiLanguages ?? []).join(',')
 				)
 			})
 
@@ -351,6 +355,45 @@ export class LiveVoiceClient extends EventEmitter {
 			}
 		} finally {
 			this.scheduleFollowups(channelId)
+		}
+	}
+
+	/**
+	 * Stellt die Ursprungssprache um (siehe {@link planSourceLanguageChange}). Lädt die Channels vorher frisch,
+	 * damit nur tatsächlich nötige Änderungen gesendet werden. Ein fehlgeschlagener Channel bricht die übrigen
+	 * nicht ab; die Fehler werden gesammelt zurückgegeben.
+	 * @returns Log-Zeilen pro geändertem Channel
+	 */
+	async setSourceLanguage(sourceId: number, language: string, manageHiding: boolean): Promise<string[]> {
+		const api = this.api
+		const eventId = this.eventState.eventId
+		if (!api || eventId === undefined) throw new LiveVoiceApiError('not_ready', 'Nicht mit LiveVoice verbunden')
+		if (this.languageChangeRunning) throw new LiveVoiceApiError('busy', 'Sprachumstellung läuft bereits')
+
+		this.languageChangeRunning = true
+		try {
+			const fresh = (await api.listChannels(eventId)).map((raw) => toChannel(raw, this.eventState.channels.get(raw.id)))
+			this.applyChannels(fresh)
+
+			const plans = planSourceLanguageChange(fresh, sourceId, language, manageHiding)
+			const lines: string[] = []
+			const errors: string[] = []
+			for (const plan of plans) {
+				try {
+					const updated = await api.updateChannel(plan.channelId, plan.patch)
+					this.eventState.channels.set(updated.id, toChannel(updated, this.eventState.channels.get(updated.id)))
+					lines.push(`${plan.channelName}: ${plan.summary}`)
+				} catch (error) {
+					errors.push(`${plan.channelName}: ${(error as Error).message}`)
+				}
+			}
+			if (plans.length > 0) this.emit('event', this.eventState)
+			if (errors.length > 0) {
+				throw new LiveVoiceApiError('partial', `Teilweise fehlgeschlagen - ${errors.join('; ')}`)
+			}
+			return lines
+		} finally {
+			this.languageChangeRunning = false
 		}
 	}
 

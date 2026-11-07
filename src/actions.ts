@@ -1,5 +1,6 @@
 import type { CompanionInputFieldDropdown } from '@companion-module/base'
 import type ModuleInstance from './main.js'
+import { languageChoices } from './languages.js'
 
 type ChannelOptions = { options: { channelId: string } }
 
@@ -11,6 +12,7 @@ export type ActionsSchema = {
 	stopAi: ChannelOptions
 	toggleAi: ChannelOptions
 	refresh: { options: Record<string, never> }
+	setSourceLanguage: { options: { channelId: string; language: string; manageHiding: boolean } }
 }
 
 function importChannelField(self: ModuleInstance): CompanionInputFieldDropdown<'channelId', string | number> {
@@ -90,6 +92,35 @@ export function UpdateActions(self: ModuleInstance): void {
 			description: 'Schaltet die AI-Übersetzung anhand des tatsächlichen Serverstatus um (ai_translating)',
 			options: [aiChannelField(self)],
 			callback: run('AI umschalten', async (id) => self.toggleAi(id), true),
+		},
+		setSourceLanguage: {
+			name: 'Ursprungssprache setzen',
+			description:
+				'Setzt die gesprochene Sprache des Quell-Channels und die Quellsprache aller AI-Channels, die daraus ' +
+				'übersetzen. Der AI-Channel mit derselben Zielsprache wird ausgeblendet (O-Ton reicht), der wegen der ' +
+				'bisherigen Ursprungssprache ausgeblendete wieder eingeblendet. Verbraucht 1 Request plus 1 pro geändertem Channel.',
+			options: [
+				importChannelField(self),
+				{ type: 'dropdown', id: 'language', label: 'Sprache', choices: languageChoices(), default: 'de' },
+				{
+					type: 'checkbox',
+					id: 'manageHiding',
+					label: 'AI-Channel in Ursprungssprache ausblenden',
+					default: true,
+				},
+			],
+			callback: async (action) => {
+				const raw = action.options.channelId
+				const channelId = self.resolveChannelId(
+					typeof raw === 'string' || typeof raw === 'number' ? String(raw) : 'auto',
+				)
+				const language = String(action.options.language ?? '')
+				if (channelId === undefined) {
+					self.log('warn', 'Ursprungssprache setzen: kein gültiger Quell-Channel ermittelbar')
+					return
+				}
+				await self.setSourceLanguage(channelId, language, action.options.manageHiding !== false)
+			},
 		},
 		refresh: {
 			name: 'Status jetzt abfragen',

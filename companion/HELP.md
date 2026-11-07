@@ -75,16 +75,35 @@ verwendet; bei mehreren gewinnt der Channel, den die AI-Channels als Quelle nutz
 - **AI-Übersetzung starten** / **stoppen** / **umschalten** — nur für Channels mit aktivierter AI-Übersetzung
   (Start/Stop-Modus "manuell" in LiveVoice). `not_configured` heisst: AI nicht eingerichtet oder keine
   AI-Minuten bzw. Zahlungsmethode mehr.
+- **Ursprungssprache setzen** — Quell-Channel + Sprache (alle 70 von LiveVoice unterstützten Sprachen) + Option
+  "AI-Channel in Ursprungssprache ausblenden" (Standard an). Details siehe unten.
 - **Status jetzt abfragen** — sofortiger Abgleich (1 Request).
 
 Ist ein Channel bereits im Zielzustand (`already_in_state`), wird das nicht als Fehler gewertet. Nach jeder
 Aktion lädt das Modul den Channel-Status gezielt nach, statt ihn aus dem Befehl abzuleiten.
+
+### Ursprungssprache umstellen
+
+Spricht z.B. ein Gast Englisch statt Deutsch, stellt die Aktion **Ursprungssprache setzen** in einem Schritt um:
+
+1. Quell-Channel: gesprochene Sprache = neue Sprache (inkl. Sprache der AI-Untertitel; ob diese an oder aus sind,
+   bleibt unverändert).
+2. Alle AI-Channels, die aus diesem Channel übersetzen: Quellsprache = neue Sprache.
+3. Der AI-Channel, dessen Zielsprache der neuen Ursprungssprache entspricht (z.B. "English" bei englischem
+   O-Ton), wird für Teilnehmende **ausgeblendet** (App, Web, iFrame) - wer Englisch hören will, hört direkt das
+   Original. Beim Zurückstellen wird er wieder eingeblendet. Channels, die aus anderen Gründen ausgeblendet sind,
+   bleiben ausgeblendet.
+
+Verbraucht 1 Request plus 1 pro geändertem Channel (bei 1 Quelle + 3 AI-Channels also 5). Bereits passende
+Channels werden übersprungen. Hinweis: Ein ausgeblendeter AI-Channel übersetzt technisch weiter, falls er auf
+Start/Stop-Modus "source" steht.
 
 ### Feedbacks
 
 - **Import ist aktiv** (`importing_source`/`importing_channel`) / **Import ist inaktiv** (offline, Sprecher oder
   AI) / **Channel ist offline** / **Import-Status unbekannt** (noch keine Daten oder API-Fehler).
 - **AI-Übersetzung läuft** (`ai_translating`).
+- **Ursprungssprache ist …** — Quell-Channel hat genau diese gesprochene Sprache.
 - **Channel-Zustand ist …** — Vergleich mit dem rohen LiveVoice-Zustand (`offline`, `speaking`,
   `importing_source`, `importing_channel`, `ai_translating`).
 - **LiveVoice verbunden** — letzte API-Abfrage erfolgreich.
@@ -97,13 +116,15 @@ Alle Zustände kommen vom LiveVoice-Server; Änderungen im LiveVoice-Web-UI werd
 
 `connection_status`, `event_name`, `event_id`, `join_code`, `participant_url`, `event_listener_count`,
 `import_channel_name`, `import_channel_id`, `import_state` (`active`/`inactive`/`offline`/`unknown`),
-`channel_state` (roher LiveVoice-Zustand), `listener_count`, `api_requests_last_hour`.
+`channel_state` (roher LiveVoice-Zustand), `source_language`, `listener_count`, `api_requests_last_hour`.
 
 ### Presets
 
 - **LiveVoice Start Import** / **LiveVoice Stop Import** / **LiveVoice Start & Stop** — alle auf
   `Auto / Quellkanal`, mit den Key-Grafiken aus [assets/brand/keys/](../assets/brand/keys/README-Keys.md).
 - **LiveVoice AI-Übersetzung** — pro AI-Channel ein Umschalt-Button (erscheint, sobald das Event geladen ist).
+- **LiveVoice Ursprungssprache** — "O-Ton DE/EN/FR/IT/ES", leuchtet bei aktiver Sprache. Weitere Sprachen über
+  die Aktion.
 
 ### Bekannte Einschränkung (Companion, bitfocus/companion#4410)
 
@@ -115,7 +136,8 @@ Workaround für "Start & Stop": nach dem Ziehen einmalig drei Feedbacks ergänze
 - `Import ist inaktiv` → `Hintergrund (aktiv)` Enabled aus + `Hintergrund (idle)` Enabled an + `Haupttext` Farbe Weiss
 - `Import-Status unbekannt` → `Hintergrund (idle)` Enabled aus + `Hintergrund (unbekannt)` Enabled an
 
-Für die AI-Buttons analog: `AI-Übersetzung läuft` → `Hintergrund (idle)` aus + `Hintergrund (aktiv)` an.
+Für AI- und Sprach-Buttons analog: `AI-Übersetzung läuft` bzw. `Ursprungssprache ist …` → `Hintergrund (idle)`
+aus + `Hintergrund (aktiv)` an.
 
 ### Umstieg von 0.3.x
 

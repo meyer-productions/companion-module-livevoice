@@ -8,6 +8,7 @@ import type {
 } from '@companion-module/base'
 import { KEY_ACTIVE_PNG64, KEY_IDLE_PNG64, KEY_OFFLINE_PNG64, KEY_UNKNOWN_PNG64 } from './key-images.js'
 import type ModuleInstance from './main.js'
+import { INPUT_LANGUAGES } from './languages.js'
 import type { ModuleSchema } from './main.js'
 
 // Key-Hintergründe aus DESIGN/Buttons/brand/keys/README-Keys.md (Icons ohne eingebrannten Text - der Text kommt
@@ -25,6 +26,8 @@ import type { ModuleSchema } from './main.js'
 // korrekt sofort nach dem Ziehen) und die 3 Feedbacks einmalig manuell in der Companion-UI ergänzen (siehe
 // HELP.md) - ein Umgehen des Bugs über eine andere Preset-Struktur hat sich nicht als möglich erwiesen.
 const COLOR_TEXT_WHITE = 0xffffff
+/** Sprachen mit fertigem Preset; alle übrigen über die Aktion "Ursprungssprache setzen". */
+const PRESET_LANGUAGES = ['de', 'en', 'fr', 'it', 'es']
 
 function imageElement(id: string, name: string, base64: string, enabledByDefault: boolean): SomeButtonGraphicsElement {
 	return {
@@ -88,6 +91,32 @@ function buildSteps(
 	channelId = 'auto',
 ): CompanionButtonStepActions<ModuleSchema>[] {
 	return [{ down: [{ actionId, options: { channelId } }], up: [] }]
+}
+
+/** Sprach-Button: setzt die Ursprungssprache des Quell-Channels, leuchtet, solange sie aktiv ist. */
+function buildLanguagePreset(language: string, label: string): CompanionLayeredButtonPresetDefinition<ModuleSchema> {
+	return {
+		type: 'layered',
+		name: `Ursprungssprache ${label}`,
+		elements: [
+			imageElement('bg-idle', 'Hintergrund (idle)', KEY_IDLE_PNG64, true),
+			imageElement('bg-active', 'Hintergrund (aktiv)', KEY_ACTIVE_PNG64, false),
+			mainTextElement(`O-Ton ${language.toUpperCase()}`, STATIC_TEXT_BOUNDS),
+		],
+		feedbacks: [
+			{
+				feedbackId: 'sourceLanguage',
+				options: { channelId: 'auto', language },
+				styleOverrides: showImageOverride('bg-idle', 'bg-active'),
+			},
+		],
+		steps: [
+			{
+				down: [{ actionId: 'setSourceLanguage', options: { channelId: 'auto', language, manageHiding: true } }],
+				up: [],
+			},
+		],
+	}
 }
 
 /** Ein AI-Toggle-Button pro Channel mit aktivierter AI-Übersetzung (Name des Channels als Text). */
@@ -180,8 +209,16 @@ export function UpdatePresets(self: ModuleInstance): void {
 		aiPresetIds.push(id)
 	}
 
+	const languageIds: string[] = []
+	for (const language of PRESET_LANGUAGES) {
+		const id = `lang_${language}`
+		presets[id] = buildLanguagePreset(language, INPUT_LANGUAGES[language])
+		languageIds.push(id)
+	}
+
 	const structure: CompanionPresetSection<ModuleSchema>[] = [
 		{ id: 'import', name: 'LiveVoice', definitions: ['startImport', 'stopImport', 'toggleImport'] },
+		{ id: 'language', name: 'LiveVoice Ursprungssprache', definitions: languageIds },
 	]
 	if (aiPresetIds.length > 0) {
 		structure.push({ id: 'ai', name: 'LiveVoice AI-Übersetzung', definitions: aiPresetIds })

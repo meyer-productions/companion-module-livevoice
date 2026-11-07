@@ -1,5 +1,6 @@
 import type { CompanionInputFieldDropdown } from '@companion-module/base'
 import type ModuleInstance from './main.js'
+import { languageChoices } from './languages.js'
 import { API_CHANNEL_STATES, type ImportState } from './types.js'
 
 export type FeedbacksSchema = {
@@ -10,6 +11,7 @@ export type FeedbacksSchema = {
 	aiActive: { type: 'boolean'; options: { channelId: string } }
 	channelState: { type: 'boolean'; options: { channelId: string; state: string } }
 	connected: { type: 'boolean'; options: Record<string, never> }
+	sourceLanguage: { type: 'boolean'; options: { channelId: string; language: string } }
 	listenerCountCompare: { type: 'boolean'; options: { channelId: string; comparator: string; value: number } }
 }
 
@@ -106,6 +108,21 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 			callback: (feedback) => {
 				const channelId = self.resolveChannelId(String(feedback.options.channelId ?? 'auto'))
 				return channelId !== undefined && self.client.getChannel(channelId)?.state === feedback.options.state
+			},
+		},
+		sourceLanguage: {
+			type: 'boolean',
+			name: 'Ursprungssprache ist …',
+			description: 'Aktiv, wenn der Quell-Channel genau diese gesprochene Sprache eingestellt hat',
+			defaultStyle: { bgcolor: 0x0064c8, color: 0xffffff },
+			options: [
+				channelField(self),
+				{ type: 'dropdown', id: 'language', label: 'Sprache', choices: languageChoices(), default: 'de' },
+			],
+			callback: (feedback) => {
+				const channelId = self.resolveChannelId(String(feedback.options.channelId ?? 'auto'))
+				const languages = channelId !== undefined ? self.client.getChannel(channelId)?.spokenLanguages : undefined
+				return languages?.length === 1 && languages[0] === feedback.options.language
 			},
 		},
 		connected: {

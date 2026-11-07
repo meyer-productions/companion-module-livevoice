@@ -27,9 +27,18 @@ export interface ApiChannel {
 	name: string
 	spoken_languages?: string[]
 	audio_input?: { enabled: boolean }
-	ai_translation?: { enabled: boolean; source_channel_id?: number; target_language?: string }
-	ai_live_captions?: { enabled: boolean }
+	ai_translation?: { enabled: boolean; source_channel_id?: number; languages?: string[]; target_language?: string }
+	ai_live_captions?: { enabled: boolean; languages?: string[] }
+	hiding?: { enabled: boolean; hidden_on_app?: boolean; hidden_on_web?: boolean; hidden_on_iframe?: boolean }
 	speaker_url?: string | null
+}
+
+/** Teil-Update eines Channels (PATCH /channels/{id}); nur gesendete Felder werden geändert. */
+export type ApiChannelPatch = {
+	spoken_languages?: string[]
+	ai_translation?: { enabled: true; languages: string[] }
+	ai_live_captions?: { enabled: boolean; languages: string[] }
+	hiding?: { enabled: boolean; hidden_on_app?: boolean; hidden_on_web?: boolean; hidden_on_iframe?: boolean }
 }
 
 /** Rohdaten eines Events aus der API (nur die Felder, die das Modul nutzt). */
@@ -51,6 +60,16 @@ export interface LiveVoiceChannel {
 	hasAudioInput: boolean
 	hasAiTranslation: boolean
 	aiSourceChannelId?: number
+	/** Gesprochene Sprachen (Quell-Channels), z.B. ["de"]. */
+	spokenLanguages: string[]
+	/** AI-Channels: übersetzte Sprachen des Quell-Channels. */
+	aiLanguages?: string[]
+	/** AI-Channels: Zielsprache, z.B. "en-US". */
+	aiTargetLanguage?: string
+	/** AI-Untertitel aktiv (deren Sprachen folgen der Ursprungssprache). */
+	hasLiveCaptions: boolean
+	/** Für Teilnehmende ausgeblendet (Feature "hiding" aktiv). */
+	hidden: boolean
 	/** Aktuelle Teilnehmende (Statistik-Endpunkt), `undefined` solange nicht abgefragt. */
 	listeners?: number
 }

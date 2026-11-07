@@ -1,4 +1,4 @@
-import type { ApiChannel, ApiEvent } from './types.js'
+import type { ApiChannel, ApiChannelPatch, ApiEvent } from './types.js'
 
 export const API_BASE_URL = 'https://livevoice.io/api/v2'
 const REQUEST_TIMEOUT_MS = 10_000
@@ -127,7 +127,7 @@ export class LiveVoiceApi {
 	 * @param reserve Anzahl Requests/Stunde, die für Aktionen frei bleiben müssen. Ist das Budget dafür zu
 	 *   knapp, wird nicht gesendet, sondern `budget_exhausted` geworfen.
 	 */
-	async request<T>(method: 'GET' | 'POST', path: string, reserve = 0): Promise<T> {
+	async request<T>(method: 'GET' | 'POST' | 'PATCH', path: string, reserve = 0, payload?: unknown): Promise<T> {
 		const blocked = this.budget.blockedForMs()
 		if (blocked > 0) {
 			throw new LiveVoiceApiError(
@@ -148,9 +148,9 @@ export class LiveVoiceApi {
 				headers: {
 					Authorization: `Bearer ${this.apiKey}`,
 					Accept: 'application/json',
-					...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+					...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}),
 				},
-				body: method === 'POST' ? '{}' : undefined,
+				body: method !== 'GET' ? JSON.stringify(payload ?? {}) : undefined,
 				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 			})
 		} catch (error) {
@@ -173,7 +173,8 @@ export class LiveVoiceApi {
 		const parsed = body as { status?: string; error?: string; details?: unknown }
 		if (!response.ok || parsed.status === 'error') {
 			const code = parsed.error ?? 'http'
-			throw new LiveVoiceApiError(code, describeError(code, response.status), response.status, parsed.details)
+			const detail = parsed.details !== undefined ? `: ${JSON.stringify(parsed.details).slice(0, 300)}` : ''
+			throw new LiveVoiceApiError(code, describeError(code, response.status) + detail, response.status, parsed.details)
 		}
 		return body as T
 	}
@@ -208,6 +209,10 @@ export class LiveVoiceApi {
 	async getChannelStatistics(channelId: number, reserve = 0): Promise<ApiStatistics> {
 		return (await this.request<{ statistics: ApiStatistics }>('GET', `/channels/${channelId}/statistics`, reserve))
 			.statistics
+	}
+
+	async updateChannel(channelId: number, patch: ApiChannelPatch): Promise<ApiChannel> {
+		return (await this.request<{ channel: ApiChannel }>('PATCH', `/channels/${channelId}`, 0, patch)).channel
 	}
 
 	async channelCommand(

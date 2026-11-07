@@ -24,6 +24,7 @@ import { RequestBudget, type LiveVoiceApiError } from './api.js'
 import { LiveVoiceClient } from './livevoice-client.js'
 import { selectDefaultImportChannel } from './state.js'
 import { parseChannelStateChange, verifyWebhook } from './webhook.js'
+import { isInputLanguage } from './languages.js'
 import type { ApiEvent, LiveVoiceChannel } from './types.js'
 
 export type ModuleSchema = {
@@ -38,6 +39,7 @@ export { UpgradeScripts }
 
 const WEBHOOK_PATH = '/webhook'
 const STATE_FEEDBACKS = [
+	'sourceLanguage',
 	'importActive',
 	'importInactive',
 	'importOffline',
@@ -83,6 +85,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			import_channel_id: '',
 			import_state: 'unknown',
 			channel_state: '',
+			source_language: '',
 			listener_count: 0,
 			api_requests_last_hour: 0,
 		})
@@ -231,6 +234,21 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		await this.client.command(channelId, channel.state === 'ai_translating' ? 'stop-ai' : 'start-ai')
 	}
 
+	async setSourceLanguage(channelId: number, language: string, manageHiding: boolean): Promise<void> {
+		if (!isInputLanguage(language)) {
+			this.log('warn', `Ursprungssprache setzen: unbekannte Sprache "${language}"`)
+			return
+		}
+		const name = this.client.getChannel(channelId)?.name ?? String(channelId)
+		try {
+			const changes = await this.client.setSourceLanguage(channelId, language, manageHiding)
+			if (changes.length === 0) this.log('info', `Ursprungssprache: ${name} ist bereits auf ${language}`)
+			for (const line of changes) this.log('info', `Ursprungssprache ${language}: ${line}`)
+		} catch (error) {
+			this.log('warn', `Ursprungssprache ${language} (${name}): ${(error as Error).message}`)
+		}
+	}
+
 	private async connect(): Promise<void> {
 		const apiKey = this.secrets?.apiKey?.trim()
 		if (!apiKey) {
@@ -325,6 +343,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			import_channel_id: channel !== undefined ? String(channel.id) : '',
 			import_state: channel?.importState ?? 'unknown',
 			channel_state: channel?.state ?? '',
+			source_language: channel?.spokenLanguages.join(',') ?? '',
 			listener_count: channel?.listeners ?? 0,
 			api_requests_last_hour: this.budget.usedLastHour(),
 		})

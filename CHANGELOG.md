@@ -16,6 +16,10 @@ requirement that a re-imported module have a new id+version pair.
 - New actions: Start/Stop/Toggle AI translation, refresh. New feedbacks: AI running, raw channel state.
   New variables: `channel_state`, `participant_url`, `event_listener_count`, `api_requests_last_hour`.
 - AI toggle preset per AI channel.
+- New action "Ursprungssprache setzen": switches the spoken language of the source channel (all 70 API input
+  languages) and the source language of all its AI channels, hides the AI channel whose target equals the new
+  original language and shows it again when switching back. Feedback `sourceLanguage`, variable
+  `source_language`, presets for DE/EN/FR/IT/ES.
 - Existing action/feedback IDs unchanged; upgrade script adds the new config defaults. After updating, the API
   key must be entered and the event selected.
 

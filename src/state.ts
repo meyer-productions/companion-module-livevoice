@@ -1,6 +1,7 @@
 import {
 	API_CHANNEL_STATES,
 	type ApiChannel,
+	type ApiChannelPatch,
 	type ApiChannelState,
 	type ImportState,
 	type LiveVoiceChannel,
@@ -38,8 +39,94 @@ export function toChannel(raw: ApiChannel, previous?: LiveVoiceChannel): LiveVoi
 		hasAudioInput: raw.audio_input?.enabled === true,
 		hasAiTranslation: raw.ai_translation?.enabled === true,
 		aiSourceChannelId: raw.ai_translation?.enabled ? raw.ai_translation.source_channel_id : undefined,
+		spokenLanguages: raw.spoken_languages ?? [],
+		aiLanguages: raw.ai_translation?.enabled ? (raw.ai_translation.languages ?? []) : undefined,
+		aiTargetLanguage: raw.ai_translation?.enabled ? raw.ai_translation.target_language : undefined,
+		hasLiveCaptions: raw.ai_live_captions?.enabled === true,
+		hidden: raw.hiding?.enabled === true,
 		listeners: previous?.listeners,
 	}
+}
+
+/**
+ * Entspricht die AI-Zielsprache (z.B. "en-US") der gesprochenen Sprache (z.B. "en")? Sprachen mit Region in
+ * der Quell-Liste (pt-BR, zh-CN …) müssen exakt passen, sonst zählt der Sprachteil vor dem Bindestrich.
+ */
+export function targetMatchesLanguage(target: string | undefined, language: string): boolean {
+	if (!target) return false
+	const t = target.toLowerCase()
+	const l = language.toLowerCase()
+	if (l.includes('-')) return t === l
+	return t.split('-')[0] === l
+}
+
+export interface LanguageChangePlan {
+	channelId: number
+	channelName: string
+	patch: ApiChannelPatch
+	/** Kurzbeschreibung für das Log. */
+	summary: string
+}
+
+/**
+ * Plant die Umstellung der Ursprungssprache: Quell-Channel bekommt die neue Sprache (inkl. AI-Untertitel),
+ * jeder AI-Channel mit diesem Quell-Channel übersetzt künftig aus der neuen Sprache. AI-Channels, deren
+ * Zielsprache gleich der neuen Ursprungssprache ist, werden (optional) ausgeblendet - im O-Ton ist die Sprache
+ * ja schon vorhanden; der wegen der bisherigen Ursprungssprache ausgeblendete Channel wird wieder eingeblendet. Channels, die schon passen, werden ausgelassen
+ * (spart Requests).
+ */
+export function planSourceLanguageChange(
+	channels: LiveVoiceChannel[],
+	sourceId: number,
+	language: string,
+	manageHiding: boolean,
+): LanguageChangePlan[] {
+	const plans: LanguageChangePlan[] = []
+	const source = channels.find((channel) => channel.id === sourceId)
+	if (!source) return plans
+
+	// Nur Channels wieder einblenden, die wegen der bisherigen Ursprungssprache ausgeblendet waren - absichtlich
+	// anders ausgeblendete Channels bleiben, wie sie sind.
+	const previousLanguage = source.spokenLanguages.length === 1 ? source.spokenLanguages[0] : undefined
+	const sourcePatch: ApiChannelPatch = {}
+	if (source.spokenLanguages.length !== 1 || source.spokenLanguages[0] !== language) {
+		sourcePatch.spoken_languages = [language]
+		// LiveVoice validiert die gespeicherten Untertitel-Sprachen auch bei ausgeschalteten Untertiteln gegen
+		// spoken_languages (sonst 422 invalid_params) - deshalb immer mitsetzen, Ein/Aus-Zustand beibehalten.
+		sourcePatch.ai_live_captions = { enabled: source.hasLiveCaptions, languages: [language] }
+	}
+	if (Object.keys(sourcePatch).length > 0) {
+		plans.push({ channelId: source.id, channelName: source.name, patch: sourcePatch, summary: `Sprache ${language}` })
+	}
+
+	for (const channel of channels) {
+		if (!channel.hasAiTranslation || channel.aiSourceChannelId !== sourceId) continue
+		const patch: ApiChannelPatch = {}
+		const notes: string[] = []
+		if (channel.aiLanguages?.length !== 1 || channel.aiLanguages[0] !== language) {
+			patch.ai_translation = { enabled: true, languages: [language] }
+			notes.push(`übersetzt aus ${language}`)
+		}
+		if (manageHiding) {
+			const shouldHide = targetMatchesLanguage(channel.aiTargetLanguage, language)
+			if (shouldHide && !channel.hidden) {
+				patch.hiding = { enabled: true, hidden_on_app: true, hidden_on_web: true, hidden_on_iframe: true }
+				notes.push('ausgeblendet')
+			} else if (
+				!shouldHide &&
+				channel.hidden &&
+				previousLanguage !== undefined &&
+				targetMatchesLanguage(channel.aiTargetLanguage, previousLanguage)
+			) {
+				patch.hiding = { enabled: false }
+				notes.push('eingeblendet')
+			}
+		}
+		if (notes.length > 0) {
+			plans.push({ channelId: channel.id, channelName: channel.name, patch, summary: notes.join(', ') })
+		}
+	}
+	return plans
 }
 
 /**
