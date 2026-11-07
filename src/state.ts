@@ -2,6 +2,7 @@ import {
 	API_CHANNEL_STATES,
 	type ApiChannel,
 	type ApiChannelPatch,
+	type AiVoice,
 	type ApiChannelState,
 	type ImportState,
 	type LiveVoiceChannel,
@@ -42,6 +43,10 @@ export function toChannel(raw: ApiChannel, previous?: LiveVoiceChannel): LiveVoi
 		spokenLanguages: raw.spoken_languages ?? [],
 		aiLanguages: raw.ai_translation?.enabled ? (raw.ai_translation.languages ?? []) : undefined,
 		aiTargetLanguage: raw.ai_translation?.enabled ? raw.ai_translation.target_language : undefined,
+		aiVoice:
+			raw.ai_translation?.enabled && raw.ai_translation.speaker_enabled !== false
+				? (raw.ai_translation.voice ?? undefined)
+				: undefined,
 		hasLiveCaptions: raw.ai_live_captions?.enabled === true,
 		hidden: raw.hiding?.enabled === true,
 		listeners: previous?.listeners,
@@ -60,7 +65,7 @@ export function targetMatchesLanguage(target: string | undefined, language: stri
 	return t.split('-')[0] === l
 }
 
-export interface LanguageChangePlan {
+export interface ChannelChangePlan {
 	channelId: number
 	channelName: string
 	patch: ApiChannelPatch
@@ -80,8 +85,8 @@ export function planSourceLanguageChange(
 	sourceId: number,
 	language: string,
 	manageHiding: boolean,
-): LanguageChangePlan[] {
-	const plans: LanguageChangePlan[] = []
+): ChannelChangePlan[] {
+	const plans: ChannelChangePlan[] = []
 	const source = channels.find((channel) => channel.id === sourceId)
 	if (!source) return plans
 
@@ -150,4 +155,26 @@ export function selectDefaultImportChannel(channels: LiveVoiceChannel[]): LiveVo
 	if (usedAsSource.length === 1) return usedAsSource[0]
 
 	return pool.find((channel) => channel.name.trim().toLowerCase() === 'original audio')
+}
+
+/**
+ * Plant den Stimmenwechsel für alle AI-Channels mit Sprachausgabe. Channels ohne Sprachausgabe (nur übersetzte
+ * Untertitel, `voice` = null) und solche mit bereits passender Stimme werden ausgelassen.
+ */
+export function planVoiceChange(channels: LiveVoiceChannel[], voice: AiVoice): ChannelChangePlan[] {
+	return channels
+		.filter((channel) => channel.hasAiTranslation && channel.aiVoice !== undefined && channel.aiVoice !== voice)
+		.map((channel) => ({
+			channelId: channel.id,
+			channelName: channel.name,
+			patch: { ai_translation: { enabled: true, voice } },
+			summary: `Stimme ${channel.aiVoice} -> ${voice}`,
+		}))
+}
+
+/** Gemeinsame Stimme aller AI-Channels mit Sprachausgabe; "gemischt" bei Unterschieden, "" ohne solche Channels. */
+export function currentVoice(channels: LiveVoiceChannel[]): string {
+	const voices = new Set(channels.map((channel) => channel.aiVoice).filter((v): v is string => v !== undefined))
+	if (voices.size === 0) return ''
+	return voices.size === 1 ? [...voices][0] : 'gemischt'
 }

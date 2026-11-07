@@ -1,7 +1,8 @@
 import type { CompanionInputFieldDropdown } from '@companion-module/base'
 import type ModuleInstance from './main.js'
 import { languageChoices } from './languages.js'
-import { API_CHANNEL_STATES, type ImportState } from './types.js'
+import { currentVoice } from './state.js'
+import { API_CHANNEL_STATES, VOICE_CHOICES, type ImportState } from './types.js'
 
 export type FeedbacksSchema = {
 	importActive: { type: 'boolean'; options: { channelId: string } }
@@ -12,6 +13,7 @@ export type FeedbacksSchema = {
 	channelState: { type: 'boolean'; options: { channelId: string; state: string } }
 	connected: { type: 'boolean'; options: Record<string, never> }
 	sourceLanguage: { type: 'boolean'; options: { channelId: string; language: string } }
+	voiceIs: { type: 'boolean'; options: { voice: string } }
 	listenerCountCompare: { type: 'boolean'; options: { channelId: string; comparator: string; value: number } }
 }
 
@@ -124,6 +126,15 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 				const languages = channelId !== undefined ? self.client.getChannel(channelId)?.spokenLanguages : undefined
 				return languages?.length === 1 && languages[0] === feedback.options.language
 			},
+		},
+		voiceIs: {
+			type: 'boolean',
+			name: 'Stimme ist …',
+			description: 'Aktiv, wenn alle AI-Channels mit Sprachausgabe diese Stimme verwenden',
+			defaultStyle: { bgcolor: 0x0064c8, color: 0xffffff },
+			options: [{ type: 'dropdown', id: 'voice', label: 'Stimme', choices: VOICE_CHOICES, default: 'female' }],
+			callback: (feedback) =>
+				currentVoice(Array.from(self.client.getEvent().channels.values())) === feedback.options.voice,
 		},
 		connected: {
 			type: 'boolean',

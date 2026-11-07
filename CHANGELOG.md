@@ -20,6 +20,8 @@ requirement that a re-imported module have a new id+version pair.
   languages) and the source language of all its AI channels, hides the AI channel whose target equals the new
   original language and shows it again when switching back. Feedback `sourceLanguage`, variable
   `source_language`, presets for DE/EN/FR/IT/ES.
+- New actions "Stimme setzen" / "Stimme umschalten": switch the AI voice (male/female/premium) for all AI
+  channels at once. Feedback `voiceIs`, variable `ai_voice`, presets for male/female.
 - Existing action/feedback IDs unchanged; upgrade script adds the new config defaults. After updating, the API
   key must be entered and the event selected.
 

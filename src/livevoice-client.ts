@@ -1,7 +1,13 @@
 import { EventEmitter } from 'node:events'
 import { LiveVoiceApi, LiveVoiceApiError, type RequestBudget } from './api.js'
-import { mapImportState, planSourceLanguageChange, toChannel } from './state.js'
-import type { ApiEvent, LiveVoiceChannel, LiveVoiceEventState } from './types.js'
+import {
+	mapImportState,
+	planSourceLanguageChange,
+	planVoiceChange,
+	toChannel,
+	type ChannelChangePlan,
+} from './state.js'
+import type { AiVoice, ApiEvent, LiveVoiceChannel, LiveVoiceEventState } from './types.js'
 import type { ChannelStateChange } from './webhook.js'
 
 /** So viele Requests pro Stunde hält das Polling für Button-Aktionen frei. */
@@ -52,7 +58,7 @@ export class LiveVoiceClient extends EventEmitter {
 	private stopped = true
 	private lastBudgetWarning = 0
 	private readonly seenDeliveries: string[] = []
-	private languageChangeRunning = false
+	private configChangeRunning = false
 
 	constructor(
 		private readonly hooks: {
@@ -358,24 +364,38 @@ export class LiveVoiceClient extends EventEmitter {
 		}
 	}
 
+	/** Stellt die Ursprungssprache um (siehe {@link planSourceLanguageChange}). */
+	async setSourceLanguage(sourceId: number, language: string, manageHiding: boolean): Promise<string[]> {
+		return this.runChannelPlans('Sprachumstellung', (channels) =>
+			planSourceLanguageChange(channels, sourceId, language, manageHiding),
+		)
+	}
+
+	/** Setzt die Stimme aller AI-Channels mit Sprachausgabe (siehe {@link planVoiceChange}). */
+	async setVoice(voice: AiVoice): Promise<string[]> {
+		return this.runChannelPlans('Stimmenwechsel', (channels) => planVoiceChange(channels, voice))
+	}
+
 	/**
-	 * Stellt die Ursprungssprache um (siehe {@link planSourceLanguageChange}). Lädt die Channels vorher frisch,
-	 * damit nur tatsächlich nötige Änderungen gesendet werden. Ein fehlgeschlagener Channel bricht die übrigen
-	 * nicht ab; die Fehler werden gesammelt zurückgegeben.
+	 * Lädt die Channels frisch, plant daraus die nötigen Änderungen und sendet nur diese (in Plan-Reihenfolge).
+	 * Ein fehlgeschlagener Channel bricht die übrigen nicht ab; die Fehler werden gesammelt geworfen.
 	 * @returns Log-Zeilen pro geändertem Channel
 	 */
-	async setSourceLanguage(sourceId: number, language: string, manageHiding: boolean): Promise<string[]> {
+	private async runChannelPlans(
+		label: string,
+		planner: (channels: LiveVoiceChannel[]) => ChannelChangePlan[],
+	): Promise<string[]> {
 		const api = this.api
 		const eventId = this.eventState.eventId
 		if (!api || eventId === undefined) throw new LiveVoiceApiError('not_ready', 'Nicht mit LiveVoice verbunden')
-		if (this.languageChangeRunning) throw new LiveVoiceApiError('busy', 'Sprachumstellung läuft bereits')
+		if (this.configChangeRunning) throw new LiveVoiceApiError('busy', `${label}: es läuft bereits eine Änderung`)
 
-		this.languageChangeRunning = true
+		this.configChangeRunning = true
 		try {
 			const fresh = (await api.listChannels(eventId)).map((raw) => toChannel(raw, this.eventState.channels.get(raw.id)))
 			this.applyChannels(fresh)
 
-			const plans = planSourceLanguageChange(fresh, sourceId, language, manageHiding)
+			const plans = planner(fresh)
 			const lines: string[] = []
 			const errors: string[] = []
 			for (const plan of plans) {
@@ -393,7 +413,7 @@ export class LiveVoiceClient extends EventEmitter {
 			}
 			return lines
 		} finally {
-			this.languageChangeRunning = false
+			this.configChangeRunning = false
 		}
 	}
 

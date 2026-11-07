@@ -119,6 +119,26 @@ function buildLanguagePreset(language: string, label: string): CompanionLayeredB
 	}
 }
 
+/** Stimmen-Button: setzt die Stimme aller AI-Channels, leuchtet, solange sie aktiv ist. */
+function buildVoicePreset(
+	voice: 'male' | 'female',
+	text: string,
+): CompanionLayeredButtonPresetDefinition<ModuleSchema> {
+	return {
+		type: 'layered',
+		name: `Stimme ${text}`,
+		elements: [
+			imageElement('bg-idle', 'Hintergrund (idle)', KEY_IDLE_PNG64, true),
+			imageElement('bg-active', 'Hintergrund (aktiv)', KEY_ACTIVE_PNG64, false),
+			mainTextElement(`Stimme ${text}`, STATIC_TEXT_BOUNDS),
+		],
+		feedbacks: [
+			{ feedbackId: 'voiceIs', options: { voice }, styleOverrides: showImageOverride('bg-idle', 'bg-active') },
+		],
+		steps: [{ down: [{ actionId: 'setVoice', options: { voice } }], up: [] }],
+	}
+}
+
 /** Ein AI-Toggle-Button pro Channel mit aktivierter AI-Übersetzung (Name des Channels als Text). */
 function buildAiPreset(channelId: number, channelName: string): CompanionLayeredButtonPresetDefinition<ModuleSchema> {
 	return {
@@ -209,6 +229,9 @@ export function UpdatePresets(self: ModuleInstance): void {
 		aiPresetIds.push(id)
 	}
 
+	presets.voice_male = buildVoicePreset('male', 'männlich')
+	presets.voice_female = buildVoicePreset('female', 'weiblich')
+
 	const languageIds: string[] = []
 	for (const language of PRESET_LANGUAGES) {
 		const id = `lang_${language}`
@@ -219,6 +242,7 @@ export function UpdatePresets(self: ModuleInstance): void {
 	const structure: CompanionPresetSection<ModuleSchema>[] = [
 		{ id: 'import', name: 'LiveVoice', definitions: ['startImport', 'stopImport', 'toggleImport'] },
 		{ id: 'language', name: 'LiveVoice Ursprungssprache', definitions: languageIds },
+		{ id: 'voice', name: 'LiveVoice Stimme', definitions: ['voice_male', 'voice_female'] },
 	]
 	if (aiPresetIds.length > 0) {
 		structure.push({ id: 'ai', name: 'LiveVoice AI-Übersetzung', definitions: aiPresetIds })

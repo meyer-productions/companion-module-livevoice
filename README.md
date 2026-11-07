@@ -32,7 +32,7 @@ official [LiveVoice Server API v2](https://livevoice.io/en/help/article/api) (PL
   polling and always keeps a reserve for button actions. Optional signed webhooks (`channel_state_changed`) for
   instant state changes.
 - **Actions** - Start/Stop/Toggle Import, Start/Stop/Toggle AI translation, switch the original (source)
-  language incl. all AI channels, refresh. Toggles only act on an
+  language incl. all AI channels, switch the AI voice (male/female) for all AI channels, refresh. Toggles only act on an
   unambiguous server state, never guess.
 - **Feedbacks driven by the real server state** - import active / inactive / offline / unknown, AI running, raw
   channel state, connection status and a participant-count comparator.

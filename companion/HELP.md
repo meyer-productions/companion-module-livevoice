@@ -77,6 +77,11 @@ verwendet; bei mehreren gewinnt der Channel, den die AI-Channels als Quelle nutz
   AI-Minuten bzw. Zahlungsmethode mehr.
 - **Ursprungssprache setzen** — Quell-Channel + Sprache (alle 70 von LiveVoice unterstützten Sprachen) + Option
   "AI-Channel in Ursprungssprache ausblenden" (Standard an). Details siehe unten.
+- **Stimme setzen (alle AI-Channels)** / **Stimme umschalten männlich/weiblich** — setzt die Stimme der
+  Sprachausgabe für alle AI-Channels des Events auf einmal (männlich, weiblich oder Premium; Premium wird von
+  LiveVoice separat verrechnet). Channels ohne Sprachausgabe und bereits passende werden übersprungen
+  (1 Request + 1 pro geändertem Channel). Umschalten wechselt männlich ↔ weiblich (Premium bleibt Premium) und
+  verweigert bei gemischten Stimmen.
 - **Status jetzt abfragen** — sofortiger Abgleich (1 Request).
 
 Ist ein Channel bereits im Zielzustand (`already_in_state`), wird das nicht als Fehler gewertet. Nach jeder
@@ -104,6 +109,7 @@ Start/Stop-Modus "source" steht.
   AI) / **Channel ist offline** / **Import-Status unbekannt** (noch keine Daten oder API-Fehler).
 - **AI-Übersetzung läuft** (`ai_translating`).
 - **Ursprungssprache ist …** — Quell-Channel hat genau diese gesprochene Sprache.
+- **Stimme ist …** — alle AI-Channels mit Sprachausgabe verwenden diese Stimme.
 - **Channel-Zustand ist …** — Vergleich mit dem rohen LiveVoice-Zustand (`offline`, `speaking`,
   `importing_source`, `importing_channel`, `ai_translating`).
 - **LiveVoice verbunden** — letzte API-Abfrage erfolgreich.
@@ -116,13 +122,14 @@ Alle Zustände kommen vom LiveVoice-Server; Änderungen im LiveVoice-Web-UI werd
 
 `connection_status`, `event_name`, `event_id`, `join_code`, `participant_url`, `event_listener_count`,
 `import_channel_name`, `import_channel_id`, `import_state` (`active`/`inactive`/`offline`/`unknown`),
-`channel_state` (roher LiveVoice-Zustand), `source_language`, `listener_count`, `api_requests_last_hour`.
+`channel_state` (roher LiveVoice-Zustand), `source_language`, `ai_voice` (Stimme oder `gemischt`), `listener_count`, `api_requests_last_hour`.
 
 ### Presets
 
 - **LiveVoice Start Import** / **LiveVoice Stop Import** / **LiveVoice Start & Stop** — alle auf
   `Auto / Quellkanal`, mit den Key-Grafiken aus [assets/brand/keys/](../assets/brand/keys/README-Keys.md).
 - **LiveVoice AI-Übersetzung** — pro AI-Channel ein Umschalt-Button (erscheint, sobald das Event geladen ist).
+- **LiveVoice Stimme** — "Stimme männlich" / "Stimme weiblich", leuchtet bei aktiver Stimme.
 - **LiveVoice Ursprungssprache** — "O-Ton DE/EN/FR/IT/ES", leuchtet bei aktiver Sprache. Weitere Sprachen über
   die Aktion.
 

@@ -22,10 +22,10 @@ import { UpdateFeedbacks, type FeedbacksSchema } from './feedbacks.js'
 import { UpdatePresets } from './presets.js'
 import { RequestBudget, type LiveVoiceApiError } from './api.js'
 import { LiveVoiceClient } from './livevoice-client.js'
-import { selectDefaultImportChannel } from './state.js'
+import { currentVoice, selectDefaultImportChannel } from './state.js'
 import { parseChannelStateChange, verifyWebhook } from './webhook.js'
 import { isInputLanguage } from './languages.js'
-import type { ApiEvent, LiveVoiceChannel } from './types.js'
+import { AI_VOICES, type AiVoice, type ApiEvent, type LiveVoiceChannel } from './types.js'
 
 export type ModuleSchema = {
 	config: ModuleConfig
@@ -40,6 +40,7 @@ export { UpgradeScripts }
 const WEBHOOK_PATH = '/webhook'
 const STATE_FEEDBACKS = [
 	'sourceLanguage',
+	'voiceIs',
 	'importActive',
 	'importInactive',
 	'importOffline',
@@ -86,6 +87,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			import_state: 'unknown',
 			channel_state: '',
 			source_language: '',
+			ai_voice: '',
 			listener_count: 0,
 			api_requests_last_hour: 0,
 		})
@@ -249,6 +251,38 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		}
 	}
 
+	async setVoice(voice: string): Promise<void> {
+		if (!(AI_VOICES as readonly string[]).includes(voice)) {
+			this.log('warn', `Stimme setzen: unbekannte Stimme "${voice}"`)
+			return
+		}
+		try {
+			const changes = await this.client.setVoice(voice as AiVoice)
+			if (changes.length === 0) this.log('info', `Stimme: alle AI-Channels sind bereits auf ${voice}`)
+			for (const line of changes) this.log('info', line)
+		} catch (error) {
+			this.log('warn', `Stimme ${voice}: ${(error as Error).message}`)
+		}
+	}
+
+	async toggleVoice(): Promise<void> {
+		const voice = currentVoice(Array.from(this.client.getEvent().channels.values()))
+		const next: Record<string, AiVoice> = {
+			male: 'female',
+			female: 'male',
+			male_premium: 'female_premium',
+			female_premium: 'male_premium',
+		}
+		if (!next[voice]) {
+			this.log(
+				'warn',
+				`Stimme umschalten: aktuelle Stimme ist "${voice || 'unbekannt'}", bitte "Stimme setzen" verwenden`,
+			)
+			return
+		}
+		await this.setVoice(next[voice])
+	}
+
 	private async connect(): Promise<void> {
 		const apiKey = this.secrets?.apiKey?.trim()
 		if (!apiKey) {
@@ -344,6 +378,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			import_state: channel?.importState ?? 'unknown',
 			channel_state: channel?.state ?? '',
 			source_language: channel?.spokenLanguages.join(',') ?? '',
+			ai_voice: currentVoice(Array.from(this.client.getEvent().channels.values())),
 			listener_count: channel?.listeners ?? 0,
 			api_requests_last_hour: this.budget.usedLastHour(),
 		})

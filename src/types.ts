@@ -18,6 +18,18 @@ export const API_CHANNEL_STATES: readonly ApiChannelState[] = [
  */
 export type ImportState = 'active' | 'inactive' | 'offline' | 'unknown'
 
+/** Stimmen der AI-Sprachausgabe laut API; Premium-Stimmen werden von LiveVoice separat verrechnet. */
+export type AiVoice = 'male' | 'female' | 'male_premium' | 'female_premium'
+
+export const AI_VOICES: readonly AiVoice[] = ['male', 'female', 'male_premium', 'female_premium']
+
+export const VOICE_CHOICES: { id: AiVoice; label: string }[] = [
+	{ id: 'male', label: 'Männlich' },
+	{ id: 'female', label: 'Weiblich' },
+	{ id: 'male_premium', label: 'Männlich Premium (separat verrechnet)' },
+	{ id: 'female_premium', label: 'Weiblich Premium (separat verrechnet)' },
+]
+
 /** Rohdaten eines Channels aus der API (nur die Felder, die das Modul nutzt). */
 export interface ApiChannel {
 	id: number
@@ -27,7 +39,14 @@ export interface ApiChannel {
 	name: string
 	spoken_languages?: string[]
 	audio_input?: { enabled: boolean }
-	ai_translation?: { enabled: boolean; source_channel_id?: number; languages?: string[]; target_language?: string }
+	ai_translation?: {
+		enabled: boolean
+		source_channel_id?: number
+		languages?: string[]
+		target_language?: string
+		voice?: string | null
+		speaker_enabled?: boolean
+	}
 	ai_live_captions?: { enabled: boolean; languages?: string[] }
 	hiding?: { enabled: boolean; hidden_on_app?: boolean; hidden_on_web?: boolean; hidden_on_iframe?: boolean }
 	speaker_url?: string | null
@@ -36,7 +55,7 @@ export interface ApiChannel {
 /** Teil-Update eines Channels (PATCH /channels/{id}); nur gesendete Felder werden geändert. */
 export type ApiChannelPatch = {
 	spoken_languages?: string[]
-	ai_translation?: { enabled: true; languages: string[] }
+	ai_translation?: { enabled: true; languages?: string[]; voice?: AiVoice }
 	ai_live_captions?: { enabled: boolean; languages: string[] }
 	hiding?: { enabled: boolean; hidden_on_app?: boolean; hidden_on_web?: boolean; hidden_on_iframe?: boolean }
 }
@@ -66,6 +85,8 @@ export interface LiveVoiceChannel {
 	aiLanguages?: string[]
 	/** AI-Channels: Zielsprache, z.B. "en-US". */
 	aiTargetLanguage?: string
+	/** AI-Channels: Stimme der Sprachausgabe, `undefined` ohne Sprachausgabe (nur übersetzte Untertitel). */
+	aiVoice?: string
 	/** AI-Untertitel aktiv (deren Sprachen folgen der Ursprungssprache). */
 	hasLiveCaptions: boolean
 	/** Für Teilnehmende ausgeblendet (Feature "hiding" aktiv). */

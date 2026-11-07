@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planSourceLanguageChange, targetMatchesLanguage } from '../state.js'
+import { currentVoice, planSourceLanguageChange, planVoiceChange, targetMatchesLanguage } from '../state.js'
 import type { LiveVoiceChannel } from '../types.js'
 
 function channel(partial: Partial<LiveVoiceChannel> & { id: number; name: string }): LiveVoiceChannel {
@@ -101,5 +101,26 @@ describe('planSourceLanguageChange', () => {
 
 	it('does nothing when everything already matches', () => {
 		expect(planSourceLanguageChange(EVENT, 1, 'de', true)).toEqual([])
+	})
+})
+
+describe('planVoiceChange / currentVoice', () => {
+	const channels = [
+		channel({ id: 1, name: 'Original Audio' }),
+		ai(2, 'English', 'en-US', { aiVoice: 'male' }),
+		ai(3, 'Français', 'fr-FR', { aiVoice: 'female' }),
+		ai(4, 'Untertitel', 'it-IT', { aiVoice: undefined }),
+	]
+
+	it('changes only AI channels with speech output whose voice differs', () => {
+		const plans = planVoiceChange(channels, 'female')
+		expect(plans.map((p) => p.channelId)).toEqual([2])
+		expect(plans[0].patch).toEqual({ ai_translation: { enabled: true, voice: 'female' } })
+	})
+
+	it('reports the common voice, "gemischt" or empty', () => {
+		expect(currentVoice(channels)).toBe('gemischt')
+		expect(currentVoice(channels.filter((c) => c.id !== 3))).toBe('male')
+		expect(currentVoice([channels[0]])).toBe('')
 	})
 })

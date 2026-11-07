@@ -1,6 +1,7 @@
 import type { CompanionInputFieldDropdown } from '@companion-module/base'
 import type ModuleInstance from './main.js'
 import { languageChoices } from './languages.js'
+import { VOICE_CHOICES } from './types.js'
 
 type ChannelOptions = { options: { channelId: string } }
 
@@ -12,6 +13,8 @@ export type ActionsSchema = {
 	stopAi: ChannelOptions
 	toggleAi: ChannelOptions
 	refresh: { options: Record<string, never> }
+	setVoice: { options: { voice: string } }
+	toggleVoice: { options: Record<string, never> }
 	setSourceLanguage: { options: { channelId: string; language: string; manageHiding: boolean } }
 }
 
@@ -121,6 +124,22 @@ export function UpdateActions(self: ModuleInstance): void {
 				}
 				await self.setSourceLanguage(channelId, language, action.options.manageHiding !== false)
 			},
+		},
+		setVoice: {
+			name: 'Stimme setzen (alle AI-Channels)',
+			description:
+				'Setzt die Stimme der Sprachausgabe für alle AI-Channels des Events. Channels ohne Sprachausgabe und ' +
+				'solche mit bereits passender Stimme werden übersprungen (1 Request + 1 pro geändertem Channel).',
+			options: [{ type: 'dropdown', id: 'voice', label: 'Stimme', choices: VOICE_CHOICES, default: 'female' }],
+			callback: async (action) => self.setVoice(String(action.options.voice ?? '')),
+		},
+		toggleVoice: {
+			name: 'Stimme umschalten männlich/weiblich (alle AI-Channels)',
+			description:
+				'Wechselt zwischen männlicher und weiblicher Stimme (Premium bleibt Premium). Bei gemischten Stimmen ' +
+				'wird nicht umgeschaltet - dann "Stimme setzen" verwenden.',
+			options: [],
+			callback: async () => self.toggleVoice(),
 		},
 		refresh: {
 			name: 'Status jetzt abfragen',
