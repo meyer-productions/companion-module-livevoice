@@ -43,6 +43,17 @@ Full reference for configuration, API limits, webhooks, actions, feedbacks, vari
 [companion/HELP.md](./companion/HELP.md). [INFO.md](./INFO.md) contains the historical reverse-engineering notes of
 the web client protocol used up to 0.3.x.
 
+## Screenshots
+
+Buttons on a Companion page - import, live import state, original language and AI voice (the active choice is
+highlighted):
+
+<p align="center"><img src="./docs/screenshots/buttons.png" alt="LiveVoice buttons in Companion" width="640" /></p>
+
+| Connection setup                                                               | Ready-made presets                                                             |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| <img src="./docs/screenshots/config.png" alt="Connection setup" width="400" /> | <img src="./docs/screenshots/presets.png" alt="Preset overview" width="400" /> |
+
 ## Installation
 
 1. Download the latest `.tgz` package from the [Releases](../../releases) page (or build it yourself, see
