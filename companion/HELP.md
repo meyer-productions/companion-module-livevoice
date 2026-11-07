@@ -26,8 +26,14 @@ Audio-Daten, Event-Daten oder Zugangsdaten an Dritte übertragen.
 - **Webhook empfangen** + **Webhook-Secret** — optional, siehe unten.
 - **Debug-Logging** — Statuswechsel, Webhooks und Request-Budget auf Debug-Level.
 
-Nach dem ersten erfolgreichen Verbinden den Konfigurationsdialog einmal neu öffnen, damit die Dropdowns für
-Event und Channel erscheinen.
+**Einrichtung Schritt für Schritt** (Companion lädt die Auswahllisten nur beim Öffnen des Dialogs neu):
+
+1. API-Key eintragen → **Speichern**.
+2. Dialog schliessen und neu öffnen → im Dropdown **Event** das gewünschte Event wählen → **Speichern**.
+3. Dialog erneut öffnen → **Bevorzugter Import-Channel** wählen (oder auf `Auto / Quellkanal` lassen) → **Speichern**.
+
+Vor dem ersten Verbinden enthalten beide Dropdowns nur `Auto` mit einem Hinweis; eine ID kann auch direkt eingetippt
+werden.
 
 ### API-Limits (wichtig)
 

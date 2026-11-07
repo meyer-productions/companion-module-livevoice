@@ -4,6 +4,12 @@ All notable changes to this Companion module are documented here. Versions follo
 `package.json`/`companion/manifest.json` version field, which is bumped on every change per Companion's
 requirement that a re-imported module have a new id+version pair.
 
+## 0.4.1
+
+- Event and preferred channel are always dropdowns (before the first connection they only offer "Auto" with a
+  hint; a saved ID stays visible; custom IDs can still be typed). Companion only reloads config fields when the
+  dialog is reopened, so: enter API key, save, reopen, pick the event, save, reopen, pick the channel.
+
 ## 0.4.0
 
 - **Switched to the official LiveVoice Server API v2** (API key instead of operator link). The internal web

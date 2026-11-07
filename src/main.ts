@@ -124,6 +124,8 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			events: this.knownEvents,
 			channels: this.sortedChannels(),
 			webhookPath: `/instance/${this.label}${WEBHOOK_PATH}`,
+			currentEventId: this.config?.eventId,
+			currentChannelId: this.config?.preferredChannelId,
 		})
 	}
 

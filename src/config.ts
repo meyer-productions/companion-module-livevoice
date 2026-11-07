@@ -23,28 +23,33 @@ export const WEBHOOK_POLL_INTERVAL = 120
 export const MIN_POLL_INTERVAL = 15
 export const DEFAULT_STATS_INTERVAL = 120
 
+/** "auto" oder eine numerische ID (Companion-Regex-Format mit Schrägstrichen). */
+const ID_REGEX = '/^(auto|[0-9]+)$/'
+
 export interface ConfigContext {
 	events: ApiEvent[]
 	channels: LiveVoiceChannel[]
 	/** Pfad des Companion-HTTP-Handlers dieser Instanz, z.B. /instance/livevoice/webhook */
 	webhookPath: string
+	currentEventId?: string
+	currentChannelId?: string
 }
 
-function eventField(events: ApiEvent[]): SomeCompanionConfigField {
+/**
+ * Companion holt die Konfigurationsfelder bei jedem Öffnen des Dialogs neu, kann sie aber nicht live
+ * aktualisieren. Deshalb sind Event und Channel immer Dropdowns: vor der ersten Verbindung nur mit "Auto" und einem
+ * Hinweis, danach mit den echten Einträgen. allowCustom erlaubt zusätzlich die direkte Eingabe einer ID.
+ */
+function eventField(events: ApiEvent[], current: string | undefined): SomeCompanionConfigField {
 	const visible = events.filter((event) => event.state !== 'stale')
-	if (visible.length === 0) {
-		return {
-			type: 'textinput',
-			id: 'eventId',
-			label: 'Event',
-			tooltip:
-				'"auto" nimmt das einzige aktive Event des Kontos. Nach der ersten erfolgreichen Verbindung erscheint hier ein Dropdown mit allen Events.',
-			width: 6,
-			default: 'auto',
-		}
-	}
 	const choices: DropdownChoice[] = [
-		{ id: 'auto', label: 'Auto (einziges aktives Event)' },
+		{
+			id: 'auto',
+			label:
+				visible.length === 0
+					? 'Auto - Liste erscheint nach Speichern des API-Keys und erneutem Öffnen'
+					: 'Auto (einziges aktives Event)',
+		},
 		...visible
 			.slice()
 			.sort((a, b) => a.name.localeCompare(b.name))
@@ -53,32 +58,52 @@ function eventField(events: ApiEvent[]): SomeCompanionConfigField {
 				label: `${event.name} (${event.id}${event.state === 'inactive' ? ', inaktiv' : ''})`,
 			})),
 	]
-	return { type: 'dropdown', id: 'eventId', label: 'Event', width: 6, choices, default: 'auto' }
+	keepCurrentChoice(choices, current, 'Event')
+	return {
+		type: 'dropdown',
+		id: 'eventId',
+		label: 'Event',
+		tooltip:
+			'Nach dem ersten Speichern des API-Keys den Dialog schliessen und neu öffnen, dann erscheinen alle Events.',
+		width: 6,
+		choices,
+		default: 'auto',
+		allowCustom: true,
+		regex: ID_REGEX,
+	}
 }
 
-function preferredChannelField(channels: LiveVoiceChannel[]): SomeCompanionConfigField {
-	if (channels.length === 0) {
-		return {
-			type: 'textinput',
-			id: 'preferredChannelId',
-			label: 'Bevorzugter Import-Channel',
-			tooltip:
-				'"auto" wählt den Channel mit Audio-Eingang (Quellkanal). Nach der ersten erfolgreichen Verbindung erscheint hier ein Dropdown.',
-			width: 6,
-			default: 'auto',
-		}
-	}
+function preferredChannelField(channels: LiveVoiceChannel[], current: string | undefined): SomeCompanionConfigField {
+	const choices: DropdownChoice[] = [
+		{
+			id: 'auto',
+			label:
+				channels.length === 0
+					? 'Auto / Quellkanal - Liste erscheint, sobald ein Event verbunden ist'
+					: 'Auto / Quellkanal',
+		},
+		...channels.map((channel) => ({ id: String(channel.id), label: `${channel.name} (${channel.id})` })),
+	]
+	keepCurrentChoice(choices, current, 'Channel')
 	return {
 		type: 'dropdown',
 		id: 'preferredChannelId',
 		label: 'Bevorzugter Import-Channel',
-		tooltip: 'Standard-Channel für Actions/Feedbacks mit Channel-Option "Auto / Quellkanal".',
+		tooltip:
+			'Standard-Channel für Actions/Feedbacks mit Option "Auto / Quellkanal". Die Channels erscheinen, sobald ein ' +
+			'Event gewählt, gespeichert und verbunden ist (Dialog danach neu öffnen).',
 		width: 6,
-		choices: [
-			{ id: 'auto', label: 'Auto / Quellkanal' },
-			...channels.map((channel) => ({ id: String(channel.id), label: `${channel.name} (${channel.id})` })),
-		],
+		choices,
 		default: 'auto',
+		allowCustom: true,
+		regex: ID_REGEX,
+	}
+}
+
+/** Damit eine gespeicherte, (noch) nicht geladene ID im Dropdown sichtbar bleibt statt leer zu erscheinen. */
+function keepCurrentChoice(choices: DropdownChoice[], current: string | undefined, kind: string): void {
+	if (current && !choices.some((choice) => String(choice.id) === current)) {
+		choices.push({ id: current, label: `${kind} ${current} (gespeichert)` })
 	}
 }
 
@@ -101,8 +126,8 @@ export function GetConfigFields(context: ConfigContext): SomeCompanionConfigFiel
 			tooltip: 'Server-API-Key des LiveVoice-Kontos. Wird nur lokal in Companion gespeichert und nie geloggt.',
 			width: 12,
 		},
-		eventField(context.events),
-		preferredChannelField(context.channels),
+		eventField(context.events, context.currentEventId),
+		preferredChannelField(context.channels, context.currentChannelId),
 		{
 			type: 'number',
 			id: 'pollInterval',

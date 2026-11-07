@@ -10,7 +10,7 @@
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" />
   </a>
   <a href="./companion/manifest.json">
-    <img src="https://img.shields.io/badge/companion%20module-0.4.0-orange.svg" alt="Companion module version" />
+    <img src="https://img.shields.io/badge/companion%20module-0.4.1-orange.svg" alt="Companion module version" />
   </a>
 </p>
 

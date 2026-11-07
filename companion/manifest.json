@@ -5,7 +5,7 @@
 	"name": "Meyer Productions: LiveVoice Remote",
 	"shortname": "livevoice",
 	"description": "LiveVoice Remote: Steuerung von LiveVoice (Audio-Import und AI-Übersetzung Start/Stop, Status-Feedbacks) über die offizielle LiveVoice Server API v2.",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"license": "MIT",
 	"repository": "git+https://github.com/meyer-productions/companion-module-livevoice.git",
 	"bugs": "https://github.com/meyer-productions/companion-module-livevoice/issues",

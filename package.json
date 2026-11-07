@@ -1,6 +1,6 @@
 {
 	"name": "meyerproductions-livevoice",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"description": "LiveVoice Remote: Companion-Modul für LiveVoice (Audio-Import und AI-Übersetzung starten/stoppen, Status-Feedbacks) über die offizielle LiveVoice Server API v2.",
 	"main": "dist/main.js",
 	"type": "module",
