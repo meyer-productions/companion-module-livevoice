@@ -10,42 +10,45 @@
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" />
   </a>
   <a href="./companion/manifest.json">
-    <img src="https://img.shields.io/badge/companion%20module-0.3.12-orange.svg" alt="Companion module version" />
+    <img src="https://img.shields.io/badge/companion%20module-0.4.0-orange.svg" alt="Companion module version" />
   </a>
 </p>
 
 # LiveVoice Remote
 
 A [Bitfocus Companion](https://bitfocus.io/companion) connection module for [LiveVoice](https://livevoice.io) -
-controls audio import start/stop and reads real-time status directly over LiveVoice's internal HTTP +
-ActionCable WebSocket interface. No browser, no Selenium, no PowerShell helper scripts.
+starts/stops audio import and AI translation per channel and reads channel status and participant counts via the
+official [LiveVoice Server API v2](https://livevoice.io/en/help/article/api) (PLUS plan, currently BETA).
 
 > «LiveVoice» und das LiveVoice-Logo sind Marken der LiveVoice GmbH. Dieses Projekt ist ein unabhängiges
 > Community-Modul, steht in keiner Verbindung zu LiveVoice und verwendet weder deren Logo noch deren Wortmarke
-> als Produktname. Der Operator-Link wird ausschliesslich lokal in der Companion-Instanz gespeichert; es werden
+> als Produktname. Der API-Key wird ausschliesslich lokal in der Companion-Instanz gespeichert; es werden
 > keine Audio-Daten, Event-Daten oder Zugangsdaten an Dritte übertragen.
 
 ## Features
 
-- **One-field setup** - paste the LiveVoice operator link; API key, client identifiers, join code and
-  event/channel info are all read automatically from the loaded operator page.
-- **Long-lived ActionCable connection** with automatic reconnect/backoff and ping/pong keep-alive.
-- **Actions** - Start Import, Stop Import, and Toggle Import (toggles only on an unambiguous server state, never
-  guesses).
-- **Feedbacks driven by the real server state** - active / inactive / offline / unknown, plus connection status
-  and a listener-count comparator. Never inferred from the last command sent.
-- **Variables** for event, channel, connection status, import state and listener count.
-- **Ready-made presets** with the module's own key-style graphics, wired to the actions above.
+- **Official API** - API key + event dropdown, no scraping of internal web client endpoints.
+- **Rate-limit aware** - LiveVoice allows 60 requests/minute and 300/hour per IP; the module budgets its own
+  polling and always keeps a reserve for button actions. Optional signed webhooks (`channel_state_changed`) for
+  instant state changes.
+- **Actions** - Start/Stop/Toggle Import, Start/Stop/Toggle AI translation, refresh. Toggles only act on an
+  unambiguous server state, never guess.
+- **Feedbacks driven by the real server state** - import active / inactive / offline / unknown, AI running, raw
+  channel state, connection status and a participant-count comparator.
+- **Variables** for event, channel, connection status, states, participant counts and API usage.
+- **Ready-made presets** with the module's own key-style graphics, plus one AI toggle per AI channel.
 
-Full reference for configuration, actions, feedbacks, variables and presets: [companion/HELP.md](./companion/HELP.md).
-Protocol reverse-engineering notes: [INFO.md](./INFO.md).
+Full reference for configuration, API limits, webhooks, actions, feedbacks, variables and presets:
+[companion/HELP.md](./companion/HELP.md). [INFO.md](./INFO.md) contains the historical reverse-engineering notes of
+the web client protocol used up to 0.3.x.
 
 ## Installation
 
 1. Download the latest `.tgz` package from the [Releases](../../releases) page (or build it yourself, see
    below).
 2. In Companion, go to **Modules → Import module package** and select the downloaded file.
-3. Add a new "LiveVoice Remote" connection and paste your LiveVoice operator link into **Operator-Link**.
+3. Add a new "LiveVoice Remote" connection, enter your LiveVoice Server API key, save, reopen the config and pick
+   the event.
 
 ## Known limitation
 
@@ -65,7 +68,8 @@ Yarn 4.
 yarn install       # install dependencies
 yarn build         # compile once to dist/
 yarn dev           # compile in watch mode
-yarn test          # run the protocol unit tests (HTML discovery, ActionCable framing, state parsing)
+yarn test          # unit tests (state mapping, request budget, API errors, webhook signatures)
+yarn smoke         # read-only check against the real API (needs LIVEVOICE_API_KEY in .env, never committed)
 yarn lint          # eslint
 yarn package       # build + produce the importable .tgz via companion-module-build
 ```

@@ -4,6 +4,21 @@ All notable changes to this Companion module are documented here. Versions follo
 `package.json`/`companion/manifest.json` version field, which is bumped on every change per Companion's
 requirement that a re-imported module have a new id+version pair.
 
+## 0.4.0
+
+- **Switched to the official LiveVoice Server API v2** (API key instead of operator link). The internal web
+  client protocol (HTML discovery + ActionCable WebSocket) is gone, together with the `ws` and
+  `node-html-parser` dependencies.
+- New config: API key, event dropdown, status poll interval (default 30 s), participant-count interval
+  (default 120 s, 0 = off), optional webhook receiver with HMAC-SHA256 signature check.
+- Request budget that respects LiveVoice's limits (60/min, 300/h per IP), keeps a reserve for actions and backs
+  off after a 429.
+- New actions: Start/Stop/Toggle AI translation, refresh. New feedbacks: AI running, raw channel state.
+  New variables: `channel_state`, `participant_url`, `event_listener_count`, `api_requests_last_hour`.
+- AI toggle preset per AI channel.
+- Existing action/feedback IDs unchanged; upgrade script adds the new config defaults. After updating, the API
+  key must be entered and the event selected.
+
 ## 0.3.12
 
 - Toggle preset ("LiveVoice Start & Stop") restored to four stacked state images

@@ -1,75 +1,91 @@
 import { describe, expect, it } from 'vitest'
-import { mapChannelUpdatedState, mapInitialImportState, selectDefaultImportChannel } from '../livevoice-client.js'
+import { mapImportState, parseApiState, selectDefaultImportChannel, toChannel } from '../state.js'
 import type { LiveVoiceChannel } from '../types.js'
 
-describe('mapInitialImportState', () => {
-	it('maps offline/active/inactive and falls back to unknown', () => {
-		expect(mapInitialImportState('offline')).toBe('offline')
-		expect(mapInitialImportState('active')).toBe('active')
-		expect(mapInitialImportState('inactive')).toBe('inactive')
-		expect(mapInitialImportState('something-new')).toBe('unknown')
-		expect(mapInitialImportState(undefined)).toBe('unknown')
+function channel(partial: Partial<LiveVoiceChannel> & { id: number; name: string }): LiveVoiceChannel {
+	return { importState: 'unknown', hasAudioInput: false, hasAiTranslation: false, ...partial }
+}
+
+describe('mapImportState', () => {
+	it('maps API states to the simplified import state', () => {
+		expect(mapImportState('importing_source')).toBe('active')
+		expect(mapImportState('importing_channel')).toBe('active')
+		expect(mapImportState('speaking')).toBe('inactive')
+		expect(mapImportState('ai_translating')).toBe('inactive')
+		expect(mapImportState('offline')).toBe('offline')
+		expect(mapImportState(undefined)).toBe('unknown')
+	})
+
+	it('rejects unknown raw states', () => {
+		expect(parseApiState('something_new')).toBeUndefined()
+		expect(parseApiState(42)).toBeUndefined()
+		expect(parseApiState('speaking')).toBe('speaking')
 	})
 })
 
-describe('mapChannelUpdatedState', () => {
-	it('prefers state_class over markup', () => {
-		expect(mapChannelUpdatedState({ state_class: 'active' })).toBe('active')
-	})
-
-	it('falls back to settings_markup when state_class is absent', () => {
-		expect(
-			mapChannelUpdatedState({
-				settings_markup: { de: '<a data-action="streaming-channel#stopImporting">Import stoppen</a>' },
-			}),
-		).toBe('active')
-
-		expect(
-			mapChannelUpdatedState({
-				settings_markup: { de: '<a data-action="streaming-channel#startImporting">Import starten</a>' },
-			}),
-		).toBe('inactive')
-	})
-
-	it('never invents active/inactive from unrecognised state_class values', () => {
-		expect(mapChannelUpdatedState({ state_class: 'connecting' })).toBe('unknown')
+describe('toChannel', () => {
+	it('reads features and keeps the previous listener count', () => {
+		const result = toChannel(
+			{
+				id: 7,
+				event_id: 1,
+				name: 'Deutsch',
+				state: 'ai_translating',
+				ai_translation: { enabled: true, source_channel_id: 3 },
+			},
+			channel({ id: 7, name: 'Deutsch', listeners: 12 }),
+		)
+		expect(result).toMatchObject({
+			id: 7,
+			state: 'ai_translating',
+			importState: 'inactive',
+			hasAiTranslation: true,
+			hasAudioInput: false,
+			aiSourceChannelId: 3,
+			listeners: 12,
+		})
 	})
 })
 
 describe('selectDefaultImportChannel', () => {
-	const channels: LiveVoiceChannel[] = [
-		{ id: 125145, name: 'Original Audio', hasAudio: true, hasSubtitles: false, isChild: false, importState: 'offline' },
-		{ id: 125147, name: 'English', hasAudio: true, hasSubtitles: true, isChild: false, importState: 'offline' },
-		{ id: 126435, name: 'Français', hasAudio: true, hasSubtitles: true, isChild: false, importState: 'offline' },
-		{ id: 126008, name: 'Українська', hasAudio: true, hasSubtitles: true, isChild: false, importState: 'offline' },
-	]
-
-	it('picks the single audio-without-subtitles channel from the observed fixture event', () => {
-		expect(selectDefaultImportChannel(channels)?.id).toBe(125145)
+	it('picks the only audio channel without AI', () => {
+		const result = selectDefaultImportChannel([
+			channel({ id: 1, name: 'Original', hasAudioInput: true }),
+			channel({ id: 2, name: 'English', hasAiTranslation: true, aiSourceChannelId: 1 }),
+		])
+		expect(result?.id).toBe(1)
 	})
 
-	it('returns undefined when no channel has audio', () => {
-		expect(selectDefaultImportChannel(channels.map((channel) => ({ ...channel, hasAudio: false })))).toBeUndefined()
+	it('prefers the channel used as AI source when several have audio input', () => {
+		const result = selectDefaultImportChannel([
+			channel({ id: 1, name: 'Bühne', hasAudioInput: true }),
+			channel({ id: 4, name: 'Saal 2', hasAudioInput: true }),
+			channel({ id: 2, name: 'English', hasAiTranslation: true, aiSourceChannelId: 4 }),
+		])
+		expect(result?.id).toBe(4)
 	})
 
-	it('falls back to the "Original Audio" name hint when multiple candidates remain', () => {
-		const ambiguous: LiveVoiceChannel[] = [
-			{ id: 1, name: 'Original Audio', hasAudio: true, hasSubtitles: false, importState: 'offline' },
-			{ id: 2, name: 'Also No Subtitles', hasAudio: true, hasSubtitles: false, importState: 'offline' },
-		]
-		expect(selectDefaultImportChannel(ambiguous)?.id).toBe(1)
+	it('handles import channels without audio input (real event layout)', () => {
+		const result = selectDefaultImportChannel([
+			channel({ id: 125145, name: 'Original Audio' }),
+			channel({ id: 9, name: 'Moderation' }),
+			channel({ id: 125147, name: 'English', hasAiTranslation: true, aiSourceChannelId: 125145 }),
+		])
+		expect(result?.id).toBe(125145)
 	})
 
-	it('gives up when still ambiguous after all heuristics', () => {
-		const ambiguous: LiveVoiceChannel[] = [
-			{ id: 1, name: 'Channel A', hasAudio: true, hasSubtitles: false, importState: 'offline' },
-			{ id: 2, name: 'Channel B', hasAudio: true, hasSubtitles: false, importState: 'offline' },
-		]
-		expect(selectDefaultImportChannel(ambiguous)).toBeUndefined()
-	})
-
-	it('never relies on a fixed channel ID', () => {
-		const shuffled = channels.map((channel) => ({ ...channel, id: channel.id + 1_000_000 }))
-		expect(selectDefaultImportChannel(shuffled)?.name).toBe('Original Audio')
+	it('falls back to "Original Audio" by name and otherwise returns nothing', () => {
+		expect(
+			selectDefaultImportChannel([
+				channel({ id: 1, name: 'A', hasAudioInput: true }),
+				channel({ id: 2, name: 'Original Audio', hasAudioInput: true }),
+			])?.id,
+		).toBe(2)
+		expect(
+			selectDefaultImportChannel([
+				channel({ id: 1, name: 'A', hasAudioInput: true }),
+				channel({ id: 2, name: 'B', hasAudioInput: true }),
+			]),
+		).toBeUndefined()
 	})
 })

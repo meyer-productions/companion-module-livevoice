@@ -1,3 +1,7 @@
+> **Historisch:** Diese Notizen beschreiben die interne Webclient-Schnittstelle (Operator-Link, ActionCable), die
+> das Modul bis Version 0.3.x genutzt hat. Ab 0.4.0 läuft das Modul über die offizielle LiveVoice Server API v2
+> (siehe [companion/HELP.md](./companion/HELP.md)). Das Dokument bleibt nur als Referenz erhalten.
+
 # Claude Code Briefing: Bitfocus Companion Modul für LiveVoice
 
 Stand: 30.08.2026

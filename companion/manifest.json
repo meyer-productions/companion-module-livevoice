@@ -4,15 +4,26 @@
 	"id": "livevoice",
 	"name": "Meyer Productions: LiveVoice Remote",
 	"shortname": "livevoice",
-	"description": "LiveVoice Remote: Steuerung von LiveVoice (Audio-Import Start/Stop, Status-Feedbacks) über die interne Webclient-Schnittstelle - kein Browser nötig.",
-	"version": "0.3.12",
+	"description": "LiveVoice Remote: Steuerung von LiveVoice (Audio-Import und AI-Übersetzung Start/Stop, Status-Feedbacks) über die offizielle LiveVoice Server API v2.",
+	"version": "0.4.0",
 	"license": "MIT",
 	"repository": "git+https://github.com/meyer-productions/companion-module-livevoice.git",
 	"bugs": "https://github.com/meyer-productions/companion-module-livevoice/issues",
-	"maintainers": [{ "name": "meyer.productions", "github": "fabianmime", "url": "https://meyer.productions" }],
-	"runtime": { "type": "node22", "api": "nodejs-ipc", "apiVersion": "0.0.0", "entrypoint": "../dist/main.js" },
+	"maintainers": [
+		{
+			"name": "meyer.productions",
+			"github": "fabianmime",
+			"url": "https://meyer.productions"
+		}
+	],
+	"runtime": {
+		"type": "node22",
+		"api": "nodejs-ipc",
+		"apiVersion": "0.0.0",
+		"entrypoint": "../dist/main.js"
+	},
 	"legacyIds": [],
 	"manufacturer": "Meyer Productions",
 	"products": ["LiveVoice"],
-	"keywords": ["livevoice", "streaming", "interpretation", "audio", "actioncable"]
+	"keywords": ["livevoice", "streaming", "interpretation", "audio", "translation", "api"]
 }

@@ -84,9 +84,31 @@ function showImageOverride(hideId: string, showId: string): CompanionPresetFeedb
 }
 
 function buildSteps(
-	actionId: 'startImport' | 'stopImport' | 'toggleImport',
+	actionId: 'startImport' | 'stopImport' | 'toggleImport' | 'toggleAi',
+	channelId = 'auto',
 ): CompanionButtonStepActions<ModuleSchema>[] {
-	return [{ down: [{ actionId, options: { channelId: 'auto' } }], up: [] }]
+	return [{ down: [{ actionId, options: { channelId } }], up: [] }]
+}
+
+/** Ein AI-Toggle-Button pro Channel mit aktivierter AI-Übersetzung (Name des Channels als Text). */
+function buildAiPreset(channelId: number, channelName: string): CompanionLayeredButtonPresetDefinition<ModuleSchema> {
+	return {
+		type: 'layered',
+		name: `AI ${channelName}`,
+		elements: [
+			imageElement('bg-idle', 'Hintergrund (idle)', KEY_IDLE_PNG64, true),
+			imageElement('bg-active', 'Hintergrund (aktiv)', KEY_ACTIVE_PNG64, false),
+			mainTextElement(`AI ${channelName}`, STATIC_TEXT_BOUNDS),
+		],
+		feedbacks: [
+			{
+				feedbackId: 'aiActive',
+				options: { channelId: String(channelId) },
+				styleOverrides: showImageOverride('bg-idle', 'bg-active'),
+			},
+		],
+		steps: buildSteps('toggleAi', String(channelId)),
+	}
 }
 
 /** Start/Stop: statisches Aktions-Icon, kein Status-Feedback nötig. */
@@ -150,9 +172,20 @@ export function UpdatePresets(self: ModuleInstance): void {
 		toggleImport,
 	}
 
+	const aiPresetIds: string[] = []
+	for (const channel of self.client.getEvent().channels.values()) {
+		if (!channel.hasAiTranslation) continue
+		const id = `ai_${channel.id}`
+		presets[id] = buildAiPreset(channel.id, channel.name)
+		aiPresetIds.push(id)
+	}
+
 	const structure: CompanionPresetSection<ModuleSchema>[] = [
 		{ id: 'import', name: 'LiveVoice', definitions: ['startImport', 'stopImport', 'toggleImport'] },
 	]
+	if (aiPresetIds.length > 0) {
+		structure.push({ id: 'ai', name: 'LiveVoice AI-Übersetzung', definitions: aiPresetIds })
+	}
 
 	self.setPresetDefinitions(structure, presets)
 }

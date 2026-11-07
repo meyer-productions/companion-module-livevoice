@@ -6,22 +6,30 @@ export type VariablesSchema = {
 	event_name: string
 	event_id: string
 	join_code: string
+	participant_url: string
+	event_listener_count: number
 	import_channel_name: string
 	import_channel_id: string
 	import_state: string
+	channel_state: string
 	listener_count: number
+	api_requests_last_hour: number
 }
 
 export function UpdateVariableDefinitions(self: ModuleInstance): void {
 	const definitions: CompanionVariableDefinitions<VariablesSchema> = {
-		connection_status: { name: 'Verbindungsstatus' },
+		connection_status: { name: 'Verbindungsstatus (ok/connecting/disconnected/error)' },
 		event_name: { name: 'Event-Name' },
 		event_id: { name: 'Event-ID' },
 		join_code: { name: 'Join-Code' },
+		participant_url: { name: 'Teilnehmer-Link' },
+		event_listener_count: { name: 'Teilnehmende Event (aktuell)' },
 		import_channel_name: { name: 'Import-Channel: Name' },
 		import_channel_id: { name: 'Import-Channel: ID' },
 		import_state: { name: 'Import-Status (active/inactive/offline/unknown)' },
-		listener_count: { name: 'Listener-Anzahl (Import-Channel)' },
+		channel_state: { name: 'Import-Channel: LiveVoice-Zustand (roh)' },
+		listener_count: { name: 'Teilnehmende Import-Channel (aktuell)' },
+		api_requests_last_hour: { name: 'API-Requests der letzten Stunde (Limit 300)' },
 	}
 
 	self.setVariableDefinitions(definitions)

@@ -1,101 +1,124 @@
 ## LiveVoice Remote
 
-Steuert [LiveVoice](https://livevoice.io) direkt über die interne HTTP-/ActionCable-Schnittstelle des
-Operator-Webclients - **kein Browser, kein Selenium, keine PowerShell-Hilfsskripte**. Das Modul liest API-Key,
-Client-Identifier, Join-Code und Auth-URL automatisch aus der geladenen Operator-Seite; diese Werte müssen nicht
-manuell eingetragen werden.
+Steuert [LiveVoice](https://livevoice.io) über die offizielle **LiveVoice Server API v2**: Audio-Import und
+AI-Übersetzung pro Channel starten/stoppen, Channel-Status und Teilnehmerzahlen als Feedbacks und Variablen.
 
 «LiveVoice» und das LiveVoice-Logo sind Marken der LiveVoice GmbH. Dieses Projekt ist ein unabhängiges
 Community-Modul, steht in keiner Verbindung zu LiveVoice und verwendet weder deren Logo noch deren Wortmarke als
-Produktname. Der Operator-Link wird ausschliesslich lokal in der Companion-Instanz gespeichert; es werden keine
+Produktname. Der API-Key wird ausschliesslich lokal in der Companion-Instanz gespeichert; es werden keine
 Audio-Daten, Event-Daten oder Zugangsdaten an Dritte übertragen.
 
-### Wichtig: Wartungsrisiko
+### Voraussetzungen
 
-Diese Integration basiert auf dem beobachteten Verhalten des LiveVoice-Webclients, nicht auf einer dokumentierten
-öffentlichen API. LiveVoice kann die HTML-Struktur, Header oder ActionCable-Nachrichten jederzeit ohne Vorwarnung
-ändern. Das Modul ist defensiv gebaut (robuster HTML-Parser statt Regex, unbekannte States werden nie geraten,
-unbekannte Nachrichten werden ignoriert statt zum Absturz zu führen), aber ein Bruch bei einem LiveVoice-Update
-ist grundsätzlich möglich.
+- LiveVoice-Konto mit freigeschalteter **Server-API** (Plan PLUS, Freischaltung über den LiveVoice-Support).
+  Die API ist laut LiveVoice noch **BETA** - Felder können sich bis Ende 2026 ändern.
+- Ein **API-Key**, erstellt im LiveVoice-Konto unter der API-Schlüsselverwaltung.
+- Ausgehender HTTPS-Zugriff von Companion auf `livevoice.io`.
 
 ### Konfiguration
 
-- **Operator-Link** — der vollständige LiveVoice-Operator-Link (`https://livevoice.io/.../operator/<token>`).
-  Wird wie ein Zugangsdaten-Geheimnis behandelt (maskiertes Eingabefeld, nicht vollständig geloggt).
-- **Bevorzugter Import-Channel** — `auto` wählt automatisch den erkannten Quell-Channel (Audio ohne Untertitel,
-  siehe unten). Nach der ersten erfolgreichen Verbindung wird hier automatisch ein Dropdown mit den echten
-  Channels des aktuellen Events angeboten (Konfigurationsdialog dafür einmal neu öffnen).
-- **Debug-Logging** — protokolliert Discovery-/Auth-/ActionCable-Details (Ping/Pong, State-Übergänge) auf
-  Debug-Level. Event/Channel-Erkennung wird unabhängig davon immer auf Info-Level geloggt.
+- **API-Key** — Server-API-Key des Kontos (maskiertes Feld, wird nie geloggt).
+- **Event** — nach der ersten Verbindung ein Dropdown mit allen Events des Kontos. `Auto` funktioniert nur, wenn
+  das Konto genau **ein** aktives Event hat; sonst meldet die Verbindung "bitte Event wählen".
+- **Bevorzugter Import-Channel** — `Auto / Quellkanal` oder ein konkreter Channel (Dropdown nach erster Verbindung).
+- **Status-Abfrage alle … Sekunden** — Standard 30 s, Minimum 15 s.
+- **Teilnehmerzahl alle … Sekunden** — Standard 120 s, `0` schaltet die Abfrage aus.
+- **Webhook empfangen** + **Webhook-Secret** — optional, siehe unten.
+- **Debug-Logging** — Statuswechsel, Webhooks und Request-Budget auf Debug-Level.
+
+Nach dem ersten erfolgreichen Verbinden den Konfigurationsdialog einmal neu öffnen, damit die Dropdowns für
+Event und Channel erscheinen.
+
+### API-Limits (wichtig)
+
+LiveVoice erlaubt **60 Requests pro Minute und 300 pro Stunde pro IP-Adresse** - auch abgelehnte Requests zählen.
+Das Modul teilt sich das Budget selbst ein:
+
+| Quelle                                 | Requests/Stunde (Standard) |
+| -------------------------------------- | -------------------------- |
+| Status-Abfrage alle 30 s               | 120                        |
+| Teilnehmerzahl alle 120 s (2 Abfragen) | 60                         |
+| Reserve für Button-Aktionen            | mind. 40                   |
+
+Die Abfragen pausieren automatisch, bevor die Reserve angetastet wird; Aktionen gehen immer vor. Nach einem
+`429` sendet das Modul bis zur nächsten vollen Minute gar nichts. Die Variable `api_requests_last_hour` zeigt den
+aktuellen Verbrauch. **Achtung:** Laufen mehrere Companion-Verbindungen oder andere API-Werkzeuge hinter derselben
+öffentlichen IP, teilen sie sich das Limit - dann Intervalle entsprechend erhöhen.
+
+### Webhook (optional, für sofortige Statuswechsel)
+
+LiveVoice kann Statuswechsel (`channel_state_changed`) aktiv an Companion melden. Das funktioniert nur, wenn
+Companion aus dem Internet per HTTPS erreichbar ist (Reverse-Proxy, Tunnel o.ä.).
+
+1. Eigenes zufälliges Secret mit 32-255 Zeichen erzeugen und in **Webhook-Secret** eintragen, **Webhook
+   empfangen** aktivieren.
+2. Endpunkt: `https://<öffentliche-Companion-Adresse>/instance/<Verbindungsname>/webhook` (wird im
+   Konfigurationsdialog angezeigt).
+3. Webhook einmalig bei LiveVoice anlegen: `POST https://livevoice.io/api/v2/webhooks` mit
+   `{"event": "channel_state_changed", "url": "<Endpunkt>", "secret": "<Secret>"}`.
+
+Jeder Webhook wird per HMAC-SHA256-Signatur geprüft; Requests mit falscher Signatur oder älter als 5 Minuten
+werden abgelehnt, doppelte Zustellungen ignoriert. Mit aktivem Webhook läuft die Status-Abfrage nur noch alle
+120 s als Abgleich.
 
 ### Automatische Channel-Erkennung
 
-Ohne explizite Auswahl (`auto`) wählt das Modul den Channel mit `hasAudio === true` und `hasSubtitles === false`.
-Gibt es davon genau einen, wird er verwendet; bei mehreren wird zusätzlich der Name "Original Audio" als Hinweis
-herangezogen. Bleibt die Auswahl mehrdeutig, wählt das Modul **keinen** Default - dann muss der Channel explizit
-über die Channel-ID in der Action/im Feedback oder in der Konfiguration gewählt werden. Es wird nie von einer
-festen Channel-ID zwischen Events ausgegangen.
+`Auto / Quellkanal` nimmt den in der Konfiguration bevorzugten Channel. Steht dieser auf `Auto`, sucht das Modul
+unter den Channels **ohne** AI-Übersetzung (bevorzugt solche mit Audio-Eingang): Ist es genau einer, wird er
+verwendet; bei mehreren gewinnt der Channel, den die AI-Channels als Quelle nutzen, danach der Name
+"Original Audio". Bleibt die Wahl mehrdeutig, wird **kein** Channel gewählt - dann den Channel explizit angeben.
 
 ### Aktionen
 
-- **Import starten** / **Import stoppen** — mit Channel-Dropdown (`Auto / Quellkanal` oder ein konkreter Channel).
-- **Import umschalten** — schaltet basierend auf dem **tatsächlichen** LiveVoice-Serverstatus um (nicht auf dem
-  zuletzt gesendeten Befehl). Ist der Status unbekannt, wird die Aktion abgelehnt statt blind umzuschalten.
+- **Import starten** / **Import stoppen** / **Import umschalten** — Channel-Dropdown (`Auto / Quellkanal` oder
+  konkret). Umschalten entscheidet anhand des tatsächlichen Serverstatus und verweigert bei unbekanntem Status.
+- **AI-Übersetzung starten** / **stoppen** / **umschalten** — nur für Channels mit aktivierter AI-Übersetzung
+  (Start/Stop-Modus "manuell" in LiveVoice). `not_configured` heisst: AI nicht eingerichtet oder keine
+  AI-Minuten bzw. Zahlungsmethode mehr.
+- **Status jetzt abfragen** — sofortiger Abgleich (1 Request).
+
+Ist ein Channel bereits im Zielzustand (`already_in_state`), wird das nicht als Fehler gewertet. Nach jeder
+Aktion lädt das Modul den Channel-Status gezielt nach, statt ihn aus dem Befehl abzuleiten.
 
 ### Feedbacks
 
-- **Import ist aktiv** / **Import ist inaktiv** (inaktiv **oder** offline) / **Import ist offline** / **Import-Status
-  unbekannt** — basieren
-  auf dem vom Server gemeldeten Status (`channel_updated`/`init_event`), nicht auf lokal ausgelösten Actions.
-  Reagieren daher auch, wenn der Import im LiveVoice-Web-UI manuell gestartet/gestoppt wird.
-- **LiveVoice verbunden** — aktiv, sobald die ActionCable-Verbindung offen **und** der V2Channel subscribed ist
-  (nicht bereits nach erfolgreichem HTTP-Authenticate).
-- **Listener-Anzahl vergleichen** — Channel + Vergleichsoperator (`=`, `>`, `<`, `>=`, `<=`) + Wert.
+- **Import ist aktiv** (`importing_source`/`importing_channel`) / **Import ist inaktiv** (offline, Sprecher oder
+  AI) / **Channel ist offline** / **Import-Status unbekannt** (noch keine Daten oder API-Fehler).
+- **AI-Übersetzung läuft** (`ai_translating`).
+- **Channel-Zustand ist …** — Vergleich mit dem rohen LiveVoice-Zustand (`offline`, `speaking`,
+  `importing_source`, `importing_channel`, `ai_translating`).
+- **LiveVoice verbunden** — letzte API-Abfrage erfolgreich.
+- **Teilnehmerzahl vergleichen** — Channel + Operator (`=`, `>`, `<`, `>=`, `<=`) + Wert.
+
+Alle Zustände kommen vom LiveVoice-Server; Änderungen im LiveVoice-Web-UI werden also ebenfalls angezeigt
+(mit Polling-Verzögerung bzw. sofort per Webhook).
 
 ### Variablen
 
-`event_name`, `event_id`, `join_code`, `connection_status`, `import_channel_name`, `import_channel_id`,
-`import_state` (`active`/`inactive`/`offline`/`unknown`), `listener_count` — letztere vier beziehen sich auf den
-über "Bevorzugter Import-Channel" ausgewählten bzw. automatisch erkannten Channel.
+`connection_status`, `event_name`, `event_id`, `join_code`, `participant_url`, `event_listener_count`,
+`import_channel_name`, `import_channel_id`, `import_state` (`active`/`inactive`/`offline`/`unknown`),
+`channel_state` (roher LiveVoice-Zustand), `listener_count`, `api_requests_last_hour`.
 
 ### Presets
 
-**LiveVoice Start Import**, **LiveVoice Stop Import**, **LiveVoice Start & Stop** - alle auf `Auto / Quellkanal`,
-direkt einsatzbereit.
+- **LiveVoice Start Import** / **LiveVoice Stop Import** / **LiveVoice Start & Stop** — alle auf
+  `Auto / Quellkanal`, mit den Key-Grafiken aus [assets/brand/keys/](../assets/brand/keys/README-Keys.md).
+- **LiveVoice AI-Übersetzung** — pro AI-Channel ein Umschalt-Button (erscheint, sobald das Event geladen ist).
 
-Beide sind mehrschichtige (`layered`) Buttons mit den Key-Grafiken aus
-[assets/brand/keys/](../assets/brand/keys/README-Keys.md) und einem eigenen Textlayer im mittleren Band.
+### Bekannte Einschränkung (Companion, bitfocus/companion#4410)
 
-- **Start Import** / **Stop Import** zeigen immer ihr jeweiliges Aktions-Icon (`key-active`/`key-idle`) - reine
-  Auslöse-Buttons, kein Status-Feedback nötig.
-- **Start & Stop** stapelt alle vier Zustandsbilder (`bg-idle`/`bg-active`/`bg-offline`/`bg-unknown`)
-  übereinander; "idle" ist per Default sichtbar (deckt auch "inactive" ab), die anderen blenden sich per
-  Feedback ein/aus. Text zeigt zusätzlich `$(livevoice:import_state)`.
-
-### Bekannte Einschränkung (Stand 30.08.2026, bestätigt auf Companion 5.0.4)
-
-Companion übernimmt die drei
-mitgelieferten Feedbacks (`Import ist aktiv`/`inaktiv`/`unbekannt`) auf dem "Start & Stop"-Preset beim Ziehen
-auf einen Button nicht automatisch - der Feedbacks-Tab bleibt leer, während Elemente und Steps korrekt
-übernommen werden. Live verifiziert per JSON-Export-Vergleich (frisch gezogener vs. manuell nachgerüsteter
-Button, sonst identische Elementstruktur) und reproduziert nach kompletter Neuinstallation, nach einem
-Companion-Update auf 5.0.4 sowie mit mehreren strukturellen Preset-Varianten (u.a. einem einzelnen
-Bild-Element statt gestapelter Layer) - der Effekt bleibt in allen Fällen gleich. Bestätigter offener Bug:
-[bitfocus/companion#4410](https://github.com/bitfocus/companion/issues/4410) "Linked Preset not working with
-Advanced Feedbacks" (Milestone v5.1, kein verifizierter Fix) - ein Umgehen über eine andere Preset-Struktur
-hat sich nicht als möglich erwiesen. Workaround bis Companion das behebt: nach dem Ziehen des Presets einmalig
-manuell drei Feedbacks hinzufügen:
+Companion übernimmt die Feedbacks eines `layered`-Presets beim Ziehen auf einen Button nicht automatisch
+(Elemente und Steps schon) - [bitfocus/companion#4410](https://github.com/bitfocus/companion/issues/4410).
+Workaround für "Start & Stop": nach dem Ziehen einmalig drei Feedbacks ergänzen:
 
 - `Import ist aktiv` → `Hintergrund (idle)` Enabled aus + `Hintergrund (aktiv)` Enabled an
 - `Import ist inaktiv` → `Hintergrund (aktiv)` Enabled aus + `Hintergrund (idle)` Enabled an + `Haupttext` Farbe Weiss
 - `Import-Status unbekannt` → `Hintergrund (idle)` Enabled aus + `Hintergrund (unbekannt)` Enabled an
 
-Kein eigenes `importOffline`-Feedback, da "Import ist inaktiv" laut Definition bereits "inactive" **und**
-"offline" abdeckt - ein zusätzliches `importOffline`-Feedback würde sich damit überlappen und im selben
-Bild-Element um den Vorrang konkurrieren. Das Bild "Hintergrund (offline)" bleibt trotzdem als Layer
-vorhanden, falls manuell ein eigenes Feedback dafür ergänzt werden soll.
+Für die AI-Buttons analog: `AI-Übersetzung läuft` → `Hintergrund (idle)` aus + `Hintergrund (aktiv)` an.
 
-### Nicht implementiert (bewusst)
+### Umstieg von 0.3.x
 
-Audio-Wiedergabe über Janus, Chat, Untertitel-Ausgabe, Event-/Channel-Administration - dieses Modul steuert
-ausschliesslich Import-Start/-Stop und liest Status/Statistik.
+Bis 0.3.x lief das Modul über die interne Webclient-Schnittstelle (Operator-Link). Ab 0.4.0 entfällt der
+Operator-Link: nach dem Update **API-Key eintragen und Event wählen**. Actions, Feedbacks und Presets behalten
+ihre IDs, bestehende Buttons funktionieren weiter.

@@ -1,7 +1,7 @@
 {
 	"name": "meyerproductions-livevoice",
-	"version": "0.3.12",
-	"description": "LiveVoice Remote: Companion-Modul für LiveVoice (steuert die interne Webclient-Schnittstelle direkt über HTTP + ActionCable, ohne Browser).",
+	"version": "0.4.0",
+	"description": "LiveVoice Remote: Companion-Modul für LiveVoice (Audio-Import und AI-Übersetzung starten/stoppen, Status-Feedbacks) über die offizielle LiveVoice Server API v2.",
 	"main": "dist/main.js",
 	"type": "module",
 	"scripts": {
@@ -13,7 +13,8 @@
 		"dev": "tsc -p tsconfig.build.json --watch",
 		"lint:raw": "eslint",
 		"lint": "run lint:raw .",
-		"test": "vitest run"
+		"test": "vitest run",
+		"smoke": "tsx --env-file=.env scripts/smoke.ts"
 	},
 	"license": "MIT",
 	"author": {
@@ -33,14 +34,11 @@
 		"yarn": "^4"
 	},
 	"dependencies": {
-		"@companion-module/base": "2.1.3",
-		"node-html-parser": "^6.1.13",
-		"ws": "^8.18.0"
+		"@companion-module/base": "2.1.3"
 	},
 	"devDependencies": {
 		"@companion-module/tools": "^3.0.1",
 		"@types/node": "^22.19.17",
-		"@types/ws": "^8.5.13",
 		"eslint": "^9.39.4",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.4.0",

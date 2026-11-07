@@ -1,17 +1,30 @@
 import {
 	InstanceBase,
 	InstanceStatus,
+	type CompanionHTTPRequest,
+	type CompanionHTTPResponse,
 	type DropdownChoice,
 	type SomeCompanionConfigField,
 } from '@companion-module/base'
-import { GetConfigFields, type ModuleConfig, type ModuleSecrets } from './config.js'
+import {
+	DEFAULT_POLL_INTERVAL,
+	DEFAULT_STATS_INTERVAL,
+	GetConfigFields,
+	MIN_POLL_INTERVAL,
+	WEBHOOK_POLL_INTERVAL,
+	type ModuleConfig,
+	type ModuleSecrets,
+} from './config.js'
 import { UpdateVariableDefinitions, type VariablesSchema } from './variables.js'
 import { UpgradeScripts } from './upgrades.js'
 import { UpdateActions, type ActionsSchema } from './actions.js'
 import { UpdateFeedbacks, type FeedbacksSchema } from './feedbacks.js'
 import { UpdatePresets } from './presets.js'
-import { LiveVoiceClient, LiveVoiceError, selectDefaultImportChannel } from './livevoice-client.js'
-import type { LiveVoiceChannel, LiveVoiceEventState } from './types.js'
+import { RequestBudget, type LiveVoiceApiError } from './api.js'
+import { LiveVoiceClient } from './livevoice-client.js'
+import { selectDefaultImportChannel } from './state.js'
+import { parseChannelStateChange, verifyWebhook } from './webhook.js'
+import type { ApiEvent, LiveVoiceChannel } from './types.js'
 
 export type ModuleSchema = {
 	config: ModuleConfig
@@ -23,21 +36,35 @@ export type ModuleSchema = {
 
 export { UpgradeScripts }
 
+const WEBHOOK_PATH = '/webhook'
+const STATE_FEEDBACKS = [
+	'importActive',
+	'importInactive',
+	'importOffline',
+	'importUnknown',
+	'aiActive',
+	'channelState',
+] as const
+
 export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 	config!: ModuleConfig // Setup in init()
 	secrets!: ModuleSecrets // Setup in init()
 
+	/** Über Neukonfigurationen hinweg geteilt, damit das Rate-Limit-Budget nicht zurückgesetzt wird. */
+	private readonly budget = new RequestBudget()
 	readonly client: LiveVoiceClient
 
-	/** Channels des zuletzt bekannten Events - lässt das Config-UI den Channel als Dropdown anbieten. */
-	knownChannels: LiveVoiceChannel[] = []
+	private knownEvents: ApiEvent[] = []
+	private budgetTimer?: ReturnType<typeof setInterval>
 
 	constructor(internal: unknown) {
 		super(internal)
 		this.client = new LiveVoiceClient({
+			budget: this.budget,
 			debug: (message) => {
 				if (this.config?.debugLogging) this.log('debug', message)
 			},
+			warn: (message) => this.log('warn', message),
 		})
 	}
 
@@ -50,73 +77,125 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			event_name: '',
 			event_id: '',
 			join_code: '',
+			participant_url: '',
+			event_listener_count: 0,
 			import_channel_name: '',
 			import_channel_id: '',
 			import_state: 'unknown',
+			channel_state: '',
 			listener_count: 0,
+			api_requests_last_hour: 0,
 		})
 
 		this.registerClientEvents()
-		this.updateActions()
-		this.updateFeedbacks()
-		this.updatePresets()
-		this.updateVariableDefinitions()
-
+		this.updateDefinitions()
+		this.budgetTimer = setInterval(() => {
+			this.setVariableValues({ api_requests_last_hour: this.budget.usedLastHour() })
+		}, 15_000)
 		await this.connect()
 	}
 
 	async destroy(): Promise<void> {
-		this.client.disconnect()
+		clearInterval(this.budgetTimer)
+		this.client.stop()
 	}
 
 	async configUpdated(config: ModuleConfig, secrets: ModuleSecrets): Promise<void> {
-		const operatorUrlChanged = this.secrets?.operatorUrl !== secrets.operatorUrl
+		const reconnect = this.secrets?.apiKey !== secrets.apiKey || this.config?.eventId !== config.eventId
 		this.config = config
 		this.secrets = secrets
 
-		this.updateActions()
-		this.updateFeedbacks()
-		this.updatePresets()
-
-		if (operatorUrlChanged) {
+		this.updateDefinitions()
+		if (reconnect) {
 			await this.connect()
+		} else {
+			this.client.updateIntervals(this.pollIntervalMs(), this.statsIntervalMs())
+			this.updateSelectedChannelVariables()
 		}
 	}
 
 	getConfigFields(): SomeCompanionConfigField[] {
-		return GetConfigFields(this.knownChannels)
+		return GetConfigFields({
+			events: this.knownEvents,
+			channels: this.sortedChannels(),
+			webhookPath: `/instance/${this.label}${WEBHOOK_PATH}`,
+		})
 	}
 
-	updateActions(): void {
+	/** Empfängt LiveVoice-Webhooks unter /instance/<Verbindungsname>/webhook. */
+	async handleHttpRequest(request: CompanionHTTPRequest): Promise<CompanionHTTPResponse> {
+		if (request.path !== WEBHOOK_PATH) return { status: 404, body: 'Not found' }
+		if (request.method.toUpperCase() !== 'POST') return { status: 405, body: 'Method not allowed' }
+
+		const secret = this.secrets?.webhookSecret ?? ''
+		if (!this.config?.webhookEnabled || secret.length < 32) {
+			return { status: 503, body: 'Webhook not enabled' }
+		}
+
+		const rawBody = request.body ?? ''
+		const verification = verifyWebhook(secret, request.headers, rawBody)
+		if (!verification.ok) {
+			this.log('warn', `Webhook abgelehnt (${verification.reason}) von ${request.ip}`)
+			return { status: 401, body: 'Invalid signature' }
+		}
+
+		const change = parseChannelStateChange(rawBody)
+		if (!change) {
+			// Unbekannte Events trotzdem quittieren, sonst wiederholt LiveVoice sie und mailt dem Konto-Inhaber.
+			if (this.config.debugLogging) this.log('debug', 'Webhook ohne channel_state_changed-Daten ignoriert')
+			return { status: 204 }
+		}
+		this.client.applyWebhook(change)
+		return { status: 204 }
+	}
+
+	private updateDefinitions(): void {
 		UpdateActions(this)
-	}
-
-	updateFeedbacks(): void {
 		UpdateFeedbacks(this)
-	}
-
-	updatePresets(): void {
 		UpdatePresets(this)
-	}
-
-	updateVariableDefinitions(): void {
 		UpdateVariableDefinitions(this)
 	}
 
-	/** Dropdown-Choices für Action-/Feedback-Channel-Optionen: "Auto" plus alle Channels des aktuellen Events. */
+	private pollIntervalMs(): number {
+		const configured = Math.max(MIN_POLL_INTERVAL, Number(this.config.pollInterval) || DEFAULT_POLL_INTERVAL)
+		const seconds = this.config.webhookEnabled ? Math.max(configured, WEBHOOK_POLL_INTERVAL) : configured
+		return seconds * 1000
+	}
+
+	private statsIntervalMs(): number {
+		const raw = Number(this.config.statsInterval ?? DEFAULT_STATS_INTERVAL)
+		if (!Number.isFinite(raw) || raw <= 0) return 0
+		return Math.max(MIN_POLL_INTERVAL * 2, raw) * 1000
+	}
+
+	private sortedChannels(): LiveVoiceChannel[] {
+		return Array.from(this.client.getEvent().channels.values()).sort((a, b) => a.name.localeCompare(b.name))
+	}
+
+	/** Dropdown-Choices für Import-Optionen: "Auto" plus alle Channels des aktuellen Events. */
 	getChannelActionChoices(): DropdownChoice[] {
-		const channels = Array.from(this.client.getEvent().channels.values()).sort((a, b) => a.name.localeCompare(b.name))
-		return [{ id: 'auto', label: 'Auto / Quellkanal' }, ...channels.map((channel) => this.channelChoice(channel))]
+		return [
+			{ id: 'auto', label: 'Auto / Quellkanal' },
+			...this.sortedChannels().map((channel) => ({ id: String(channel.id), label: `${channel.name} (${channel.id})` })),
+		]
 	}
 
-	private channelChoice(channel: LiveVoiceChannel): DropdownChoice {
-		return { id: String(channel.id), label: `${channel.name} (${channel.id})` }
+	/** Dropdown-Choices für AI-Optionen: nur Channels mit aktivierter AI-Übersetzung. */
+	getAiChannelChoices(): DropdownChoice[] {
+		return this.sortedChannels()
+			.filter((channel) => channel.hasAiTranslation)
+			.map((channel) => ({ id: String(channel.id), label: `${channel.name} (${channel.id})` }))
 	}
 
-	/** Löst "auto"/leer über {@link selectDefaultImportChannel} auf, sonst eine konkret gewählte Channel-ID. */
+	/** Löst "auto"/leer über den bevorzugten bzw. automatisch erkannten Channel auf, sonst eine konkrete ID. */
 	resolveChannelId(value: string): number | undefined {
 		const channels = Array.from(this.client.getEvent().channels.values())
 		if (!value || value === 'auto') {
+			const preferred = this.config?.preferredChannelId
+			if (preferred && preferred !== 'auto') {
+				const id = Number(preferred)
+				if (channels.some((channel) => channel.id === id)) return id
+			}
 			return selectDefaultImportChannel(channels)?.id
 		}
 		const numeric = Number(value)
@@ -124,15 +203,13 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		return channels.some((channel) => channel.id === numeric) ? numeric : undefined
 	}
 
-	async startImport(channelId: number): Promise<void> {
-		await this.client.startImport(channelId)
+	resolveAiChannelId(value: string): number | undefined {
+		const numeric = Number(value)
+		if (!value || !Number.isFinite(numeric)) return undefined
+		return this.client.getChannel(numeric)?.hasAiTranslation ? numeric : undefined
 	}
 
-	async stopImport(channelId: number): Promise<void> {
-		await this.client.stopImport(channelId)
-	}
-
-	/** Schaltet nur um, wenn der tatsächliche Serverstatus eindeutig ist - siehe INFO.md Abschnitt 16. */
+	/** Schaltet nur um, wenn der tatsächliche Serverstatus eindeutig ist. */
 	async toggleImport(channelId: number): Promise<void> {
 		const channel = this.client.getChannel(channelId)
 		if (!channel || channel.importState === 'unknown') {
@@ -142,96 +219,114 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			)
 			return
 		}
-		if (channel.importState === 'active') {
-			await this.client.stopImport(channelId)
-		} else {
-			await this.client.startImport(channelId)
+		await this.client.command(channelId, channel.importState === 'active' ? 'stop-import' : 'start-import')
+	}
+
+	async toggleAi(channelId: number): Promise<void> {
+		const channel = this.client.getChannel(channelId)
+		if (!channel?.state) {
+			this.log('warn', `AI umschalten: Status von Channel ${channelId} ist unbekannt, Aktion wird nicht ausgeführt.`)
+			return
 		}
+		await this.client.command(channelId, channel.state === 'ai_translating' ? 'stop-ai' : 'start-ai')
 	}
 
 	private async connect(): Promise<void> {
-		const operatorUrl = this.secrets?.operatorUrl?.trim()
-		if (!operatorUrl) {
-			this.updateStatus(InstanceStatus.BadConfig, 'Operator-Link ist erforderlich.')
+		const apiKey = this.secrets?.apiKey?.trim()
+		if (!apiKey) {
+			this.client.stop()
+			this.updateStatus(InstanceStatus.BadConfig, 'API-Key fehlt')
+			this.setVariableValues({ connection_status: 'error' })
 			return
 		}
-		this.updateStatus(InstanceStatus.Connecting, 'Verbinde mit LiveVoice...')
-		await this.client.connect(operatorUrl)
+		const eventId = this.config.eventId && this.config.eventId !== 'auto' ? Number(this.config.eventId) : undefined
+		if (eventId !== undefined && !Number.isInteger(eventId)) {
+			this.client.stop()
+			this.updateStatus(InstanceStatus.BadConfig, 'Event-ID ungültig')
+			return
+		}
+
+		this.updateStatus(InstanceStatus.Connecting, 'Verbinde mit LiveVoice API...')
+		this.setVariableValues({ connection_status: 'connecting' })
+		await this.client.start({
+			apiKey,
+			eventId,
+			pollIntervalMs: this.pollIntervalMs(),
+			statsIntervalMs: this.statsIntervalMs(),
+			statsChannelId: () => this.resolveChannelId('auto'),
+		})
 	}
 
 	private registerClientEvents(): void {
+		this.client.on('events', (events) => {
+			this.knownEvents = events
+		})
+
 		this.client.on('connected', () => {
 			const event = this.client.getEvent()
-			this.updateStatus(InstanceStatus.Ok, `Connected: ${event.name ?? 'Event'}`)
+			this.updateStatus(InstanceStatus.Ok, event.name ?? 'Verbunden')
 			this.setVariableValues({ connection_status: 'ok' })
 			this.checkFeedbacks('connected')
 		})
 
 		this.client.on('disconnected', (reason) => {
-			this.updateStatus(InstanceStatus.Disconnected, `Getrennt - verbinde erneut (${reason})`)
+			this.updateStatus(InstanceStatus.ConnectionFailure, reason)
 			this.setVariableValues({ connection_status: 'disconnected' })
-			this.checkFeedbacks('connected')
+			this.checkFeedbacks('connected', ...STATE_FEEDBACKS)
+			this.updateSelectedChannelVariables()
 		})
 
 		this.client.on('event', (eventState) => {
 			this.log('info', `Event: ${eventState.name ?? 'unbekannt'} (${eventState.eventId ?? '-'})`)
 			for (const channel of eventState.channels.values()) {
-				this.log('info', `Channel: ${channel.name} (${channel.id})`)
+				this.log('info', `Channel: ${channel.name} (${channel.id}) - ${channel.state ?? 'unbekannt'}`)
 			}
-
-			this.knownChannels = Array.from(eventState.channels.values())
-			this.updateActions()
-			this.updateFeedbacks()
-			this.updatePresets()
-			this.updateVariableDefinitions()
-			this.updateEventVariables(eventState)
-			this.checkFeedbacks('importActive', 'importInactive', 'listenerCountCompare', 'connected')
+			this.setVariableValues({
+				event_name: eventState.name ?? '',
+				event_id: eventState.eventId !== undefined ? String(eventState.eventId) : '',
+				join_code: eventState.joinCode ?? '',
+				participant_url: eventState.participantUrl ?? '',
+			})
+			this.updateDefinitions()
+			this.updateSelectedChannelVariables()
+			this.checkFeedbacks(...STATE_FEEDBACKS, 'listenerCountCompare', 'connected')
 		})
 
 		this.client.on('channelUpdated', () => {
-			this.knownChannels = Array.from(this.client.getEvent().channels.values())
 			this.updateSelectedChannelVariables()
-			this.checkFeedbacks('importActive', 'importInactive')
+			this.checkFeedbacks(...STATE_FEEDBACKS)
 		})
 
 		this.client.on('statistics', () => {
+			this.setVariableValues({ event_listener_count: this.client.getEvent().listeners ?? 0 })
 			this.updateSelectedChannelVariables()
 			this.checkFeedbacks('listenerCountCompare')
 		})
 
-		this.client.on('error', (error: LiveVoiceError) => {
-			this.log('warn', `LiveVoice-Fehler: ${error.message}`)
-			if (error.code === 'auth-invalid-api-key' || error.code === 'auth-invalid-device-id') {
+		this.client.on('error', (error: LiveVoiceApiError) => {
+			this.log('warn', `LiveVoice: ${error.message}`)
+			this.setVariableValues({ connection_status: 'error' })
+			if (error.isAuthError) {
 				this.updateStatus(InstanceStatus.AuthenticationFailure, error.message)
-			} else if (error.code === 'discovery-parse-error' || error.code === 'discovery-http-error') {
-				this.updateStatus(
-					InstanceStatus.ConnectionFailure,
-					'Operator-Link konnte nicht als LiveVoice-Seite erkannt werden',
-				)
+			} else if (error.code === 'no_event_selected' || error.code === 'not_found') {
+				this.updateStatus(InstanceStatus.BadConfig, error.message)
 			} else {
 				this.updateStatus(InstanceStatus.ConnectionFailure, error.message)
 			}
 		})
 	}
 
-	private updateEventVariables(eventState: LiveVoiceEventState): void {
-		this.setVariableValues({
-			event_name: eventState.name ?? '',
-			event_id: eventState.eventId !== undefined ? String(eventState.eventId) : '',
-			join_code: eventState.joinCode ?? '',
-		})
-		this.updateSelectedChannelVariables()
-	}
-
 	private updateSelectedChannelVariables(): void {
-		const channelId = this.resolveChannelId(this.config?.preferredChannelId ?? 'auto')
+		const channelId = this.resolveChannelId('auto')
 		const channel = channelId !== undefined ? this.client.getChannel(channelId) : undefined
 
 		this.setVariableValues({
 			import_channel_name: channel?.name ?? '',
 			import_channel_id: channel !== undefined ? String(channel.id) : '',
 			import_state: channel?.importState ?? 'unknown',
+			channel_state: channel?.state ?? '',
 			listener_count: channel?.listeners ?? 0,
+			api_requests_last_hour: this.budget.usedLastHour(),
 		})
 	}
 }

@@ -1,13 +1,19 @@
 import type { CompanionInputFieldDropdown } from '@companion-module/base'
 import type ModuleInstance from './main.js'
 
+type ChannelOptions = { options: { channelId: string } }
+
 export type ActionsSchema = {
-	startImport: { options: { channelId: string } }
-	stopImport: { options: { channelId: string } }
-	toggleImport: { options: { channelId: string } }
+	startImport: ChannelOptions
+	stopImport: ChannelOptions
+	toggleImport: ChannelOptions
+	startAi: ChannelOptions
+	stopAi: ChannelOptions
+	toggleAi: ChannelOptions
+	refresh: { options: Record<string, never> }
 }
 
-function channelField(self: ModuleInstance): CompanionInputFieldDropdown<'channelId', string | number> {
+function importChannelField(self: ModuleInstance): CompanionInputFieldDropdown<'channelId', string | number> {
 	return {
 		type: 'dropdown',
 		id: 'channelId',
@@ -17,48 +23,79 @@ function channelField(self: ModuleInstance): CompanionInputFieldDropdown<'channe
 	}
 }
 
+function aiChannelField(self: ModuleInstance): CompanionInputFieldDropdown<'channelId', string | number> {
+	const choices = self.getAiChannelChoices()
+	return {
+		type: 'dropdown',
+		id: 'channelId',
+		label: 'AI-Channel',
+		choices,
+		default: choices[0]?.id ?? '',
+	}
+}
+
 export function UpdateActions(self: ModuleInstance): void {
+	const run =
+		(label: string, handler: (channelId: number) => Promise<void>, ai = false) =>
+		async (action: { options: { channelId?: unknown } }): Promise<void> => {
+			const option = action.options.channelId
+			const raw = typeof option === 'string' || typeof option === 'number' ? String(option) : ai ? '' : 'auto'
+			const channelId = ai ? self.resolveAiChannelId(raw) : self.resolveChannelId(raw)
+			if (channelId === undefined) {
+				self.log('warn', `${label}: kein gültiger Channel ermittelbar`)
+				return
+			}
+			try {
+				await handler(channelId)
+			} catch (error) {
+				self.log('warn', `${label} (Channel ${channelId}) fehlgeschlagen: ${(error as Error).message}`)
+			}
+		}
+
 	self.setActionDefinitions({
 		startImport: {
 			name: 'Import starten',
 			description: 'Startet den Audio-Import für den gewählten Channel',
-			options: [channelField(self)],
-			callback: async (action) => {
-				const channelId = self.resolveChannelId(String(action.options.channelId ?? 'auto'))
-				if (channelId === undefined) {
-					self.log('warn', 'Import starten: kein gültiger Channel ermittelbar')
-					return
-				}
-				await self.startImport(channelId)
-			},
+			options: [importChannelField(self)],
+			callback: run('Import starten', async (id) => self.client.command(id, 'start-import')),
 		},
 		stopImport: {
 			name: 'Import stoppen',
 			description: 'Stoppt den Audio-Import für den gewählten Channel',
-			options: [channelField(self)],
-			callback: async (action) => {
-				const channelId = self.resolveChannelId(String(action.options.channelId ?? 'auto'))
-				if (channelId === undefined) {
-					self.log('warn', 'Import stoppen: kein gültiger Channel ermittelbar')
-					return
-				}
-				await self.stopImport(channelId)
-			},
+			options: [importChannelField(self)],
+			callback: run('Import stoppen', async (id) => self.client.command(id, 'stop-import')),
 		},
 		toggleImport: {
 			name: 'Import umschalten',
 			description:
 				'Schaltet den Import um, basierend auf dem tatsächlichen LiveVoice-Serverstatus - nicht auf dem zuletzt ' +
 				'gesendeten Befehl. Bei unbekanntem Status wird die Aktion abgelehnt statt blind umzuschalten.',
-			options: [channelField(self)],
-			callback: async (action) => {
-				const channelId = self.resolveChannelId(String(action.options.channelId ?? 'auto'))
-				if (channelId === undefined) {
-					self.log('warn', 'Import umschalten: kein gültiger Channel ermittelbar')
-					return
-				}
-				await self.toggleImport(channelId)
-			},
+			options: [importChannelField(self)],
+			callback: run('Import umschalten', async (id) => self.toggleImport(id)),
+		},
+		startAi: {
+			name: 'AI-Übersetzung starten',
+			description: 'Startet die AI-Übersetzung eines AI-Channels (Start/Stop-Modus "manuell")',
+			options: [aiChannelField(self)],
+			callback: run('AI starten', async (id) => self.client.command(id, 'start-ai'), true),
+		},
+		stopAi: {
+			name: 'AI-Übersetzung stoppen',
+			description: 'Stoppt die AI-Übersetzung eines AI-Channels',
+			options: [aiChannelField(self)],
+			callback: run('AI stoppen', async (id) => self.client.command(id, 'stop-ai'), true),
+		},
+		toggleAi: {
+			name: 'AI-Übersetzung umschalten',
+			description: 'Schaltet die AI-Übersetzung anhand des tatsächlichen Serverstatus um (ai_translating)',
+			options: [aiChannelField(self)],
+			callback: run('AI umschalten', async (id) => self.toggleAi(id), true),
+		},
+		refresh: {
+			name: 'Status jetzt abfragen',
+			description: 'Lädt den Status aller Channels sofort neu (verbraucht 1 Request)',
+			options: [],
+			callback: async () => self.client.refreshNow(),
 		},
 	})
 }
