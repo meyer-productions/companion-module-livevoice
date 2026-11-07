@@ -67,11 +67,11 @@ describe('selectDefaultImportChannel', () => {
 
 	it('handles import channels without audio input (real event layout)', () => {
 		const result = selectDefaultImportChannel([
-			channel({ id: 125145, name: 'Original Audio' }),
+			channel({ id: 101, name: 'Original Audio' }),
 			channel({ id: 9, name: 'Moderation' }),
-			channel({ id: 125147, name: 'English', hasAiTranslation: true, aiSourceChannelId: 125145 }),
+			channel({ id: 102, name: 'English', hasAiTranslation: true, aiSourceChannelId: 101 }),
 		])
-		expect(result?.id).toBe(125145)
+		expect(result?.id).toBe(101)
 	})
 
 	it('falls back to "Original Audio" by name and otherwise returns nothing', () => {

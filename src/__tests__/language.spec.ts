@@ -26,7 +26,7 @@ function ai(id: number, name: string, target: string, extra: Partial<LiveVoiceCh
 	})
 }
 
-/** Abbild von Event 64447 (Stand 07.11.2026). */
+/** Typischer Aufbau: ein Quell-Channel, mehrere AI-Übersetzungen. */
 const EVENT = [
 	channel({ id: 1, name: 'Original Audio', spokenLanguages: ['de'] }),
 	ai(2, 'English', 'en-US'),
