@@ -128,12 +128,15 @@ Alle Zustände kommen vom LiveVoice-Server; Änderungen im LiveVoice-Web-UI werd
 
 `connection_status`, `event_name`, `event_id`, `join_code`, `participant_url`, `event_listener_count`,
 `import_channel_name`, `import_channel_id`, `import_state` (`active`/`inactive`/`offline`/`unknown`),
+`import_action` (`Import starten`/`Import stoppen`), `import_status` (`LÄUFT`/`INAKTIV`/`OFFLINE`/`UNBEKANNT`),
 `channel_state` (roher LiveVoice-Zustand), `source_language`, `ai_voice` (Stimme oder `gemischt`), `listener_count`, `api_requests_last_hour`.
 
 ### Presets
 
-- **LiveVoice Start Import** / **LiveVoice Stop Import** / **LiveVoice Start & Stop** — alle auf
-  `Auto / Quellkanal`, mit den Key-Grafiken aus [assets/brand/keys/](../assets/brand/keys/README-Keys.md).
+- **LiveVoice Import starten** / **LiveVoice Import stoppen** / **LiveVoice Start & Stop** — alle auf
+  `Auto / Quellkanal`. Aufbau aller Buttons: kleines LiveVoice-Logo oben, Text in der Mitte. "Start & Stop" zeigt
+  oben die nächste Aktion ("Import starten"/"Import stoppen") und unten ein Status-Band (orange LÄUFT, grau
+  INAKTIV, dunkel OFFLINE, schraffiert UNBEKANNT).
 - **LiveVoice AI-Übersetzung** — pro AI-Channel ein Umschalt-Button (erscheint, sobald das Event geladen ist).
 - **LiveVoice Stimme** — "Stimme männlich" / "Stimme weiblich", leuchtet bei aktiver Stimme.
 - **LiveVoice Ursprungssprache** — "O-Ton DE/EN/FR/IT/ES", leuchtet bei aktiver Sprache. Weitere Sprachen über
@@ -143,14 +146,12 @@ Alle Zustände kommen vom LiveVoice-Server; Änderungen im LiveVoice-Web-UI werd
 
 Companion übernimmt die Feedbacks eines `layered`-Presets beim Ziehen auf einen Button nicht automatisch
 (Elemente und Steps schon) - [bitfocus/companion#4410](https://github.com/bitfocus/companion/issues/4410).
-Workaround für "Start & Stop": nach dem Ziehen einmalig drei Feedbacks ergänzen:
 
-- `Import ist aktiv` → `Hintergrund (idle)` Enabled aus + `Hintergrund (aktiv)` Enabled an
-- `Import ist inaktiv` → `Hintergrund (aktiv)` Enabled aus + `Hintergrund (idle)` Enabled an + `Haupttext` Farbe Weiss
-- `Import-Status unbekannt` → `Hintergrund (idle)` Enabled aus + `Hintergrund (unbekannt)` Enabled an
+"Start & Stop" ist davon ab 0.4.2 nicht mehr betroffen: Texte kommen aus den Variablen `import_action` und
+`import_status`, die Zustandsbilder werden per Expression auf `import_state` eingeblendet - keine Feedbacks nötig.
 
-Für AI- und Sprach-Buttons analog: `AI-Übersetzung läuft` bzw. `Ursprungssprache ist …` → `Hintergrund (idle)`
-aus + `Hintergrund (aktiv)` an.
+Für AI- und Sprach-/Stimmen-Buttons bei Bedarf nach dem Ziehen einmalig ergänzen: `AI-Übersetzung läuft`,
+`Ursprungssprache ist …` bzw. `Stimme ist …` → `Hintergrund (idle)` Enabled aus + `Hintergrund (aktiv)` Enabled an.
 
 ### Umstieg von 0.3.x
 

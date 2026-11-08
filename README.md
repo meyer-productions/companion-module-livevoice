@@ -64,12 +64,12 @@ highlighted):
 
 ## Known limitation
 
-Companion does not currently carry a preset's own feedbacks over onto a button when the "LiveVoice Start &
-Stop" preset is dragged onto it - the button's Feedbacks tab stays empty even though the preset defines them
-correctly (elements and action steps _do_ transfer). This is a confirmed, currently open Companion bug -
-[bitfocus/companion#4410](https://github.com/bitfocus/companion/issues/4410) - not a defect in this module.
-Details and the exact one-time manual workaround are documented in
-[companion/HELP.md](./companion/HELP.md#bekannte-einschränkung-stand-30082026-bestätigt-auf-companion-504).
+Companion does not currently carry a layered preset's own feedbacks over onto a button when it is dragged onto
+it (elements and action steps _do_ transfer) - a confirmed, currently open Companion bug,
+[bitfocus/companion#4410](https://github.com/bitfocus/companion/issues/4410). Since 0.4.2 the "LiveVoice Start &
+Stop" button no longer needs feedbacks: its texts come from variables and its state images are switched by
+expressions. For the AI/language/voice buttons the one-time manual workaround is documented in
+[companion/HELP.md](./companion/HELP.md).
 
 ## Development
 
@@ -83,6 +83,7 @@ yarn dev           # compile in watch mode
 yarn test          # unit tests (state mapping, request budget, API errors, webhook signatures)
 yarn smoke         # read-only check against the real API (needs LIVEVOICE_API_KEY in .env, never committed)
 yarn lint          # eslint
+yarn keys          # regenerate the button backgrounds (src/key-images.ts) from scripts/generate-keys.ts
 yarn package       # build + produce the importable .tgz via companion-module-build
 ```
 

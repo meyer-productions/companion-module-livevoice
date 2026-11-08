@@ -1,6 +1,6 @@
 {
 	"name": "meyerproductions-livevoice",
-	"version": "0.4.1",
+	"version": "0.4.2",
 	"description": "LiveVoice Remote: Companion-Modul für LiveVoice (Audio-Import und AI-Übersetzung starten/stoppen, Status-Feedbacks) über die offizielle LiveVoice Server API v2.",
 	"main": "dist/main.js",
 	"type": "module",
@@ -14,7 +14,8 @@
 		"lint:raw": "eslint",
 		"lint": "run lint:raw .",
 		"test": "vitest run",
-		"smoke": "tsx --env-file=.env scripts/smoke.ts"
+		"smoke": "tsx --env-file=.env scripts/smoke.ts",
+		"keys": "tsx scripts/generate-keys.ts && prettier -w src/key-images.ts"
 	},
 	"license": "MIT",
 	"author": {

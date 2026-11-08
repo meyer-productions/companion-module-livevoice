@@ -30,6 +30,33 @@ export function mapImportState(state: ApiChannelState | undefined): ImportState 
 	}
 }
 
+/** Was ein Druck auf den Toggle-Button gerade bewirkt (Haupttext des Start-&-Stop-Buttons). */
+export function importActionLabel(state: ImportState): string {
+	switch (state) {
+		case 'active':
+			return 'Import stoppen'
+		case 'inactive':
+		case 'offline':
+			return 'Import starten'
+		default:
+			return 'Import'
+	}
+}
+
+/** Kurzer Status für das Band unten am Start-&-Stop-Button. */
+export function importStatusLabel(state: ImportState): string {
+	switch (state) {
+		case 'active':
+			return 'LÄUFT'
+		case 'inactive':
+			return 'INAKTIV'
+		case 'offline':
+			return 'OFFLINE'
+		default:
+			return 'UNBEKANNT'
+	}
+}
+
 export function toChannel(raw: ApiChannel, previous?: LiveVoiceChannel): LiveVoiceChannel {
 	const state = parseApiState(raw.state)
 	return {

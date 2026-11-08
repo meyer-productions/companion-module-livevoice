@@ -22,7 +22,7 @@ import { UpdateFeedbacks, type FeedbacksSchema } from './feedbacks.js'
 import { UpdatePresets } from './presets.js'
 import { RequestBudget, type LiveVoiceApiError } from './api.js'
 import { LiveVoiceClient } from './livevoice-client.js'
-import { currentVoice, selectDefaultImportChannel } from './state.js'
+import { currentVoice, importActionLabel, importStatusLabel, selectDefaultImportChannel } from './state.js'
 import { parseChannelStateChange, verifyWebhook } from './webhook.js'
 import { isInputLanguage } from './languages.js'
 import { AI_VOICES, type AiVoice, type ApiEvent, type LiveVoiceChannel } from './types.js'
@@ -85,6 +85,8 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			import_channel_name: '',
 			import_channel_id: '',
 			import_state: 'unknown',
+			import_action: importActionLabel('unknown'),
+			import_status: importStatusLabel('unknown'),
 			channel_state: '',
 			source_language: '',
 			ai_voice: '',
@@ -373,11 +375,14 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 	private updateSelectedChannelVariables(): void {
 		const channelId = this.resolveChannelId('auto')
 		const channel = channelId !== undefined ? this.client.getChannel(channelId) : undefined
+		const importState = channel?.importState ?? 'unknown'
 
 		this.setVariableValues({
 			import_channel_name: channel?.name ?? '',
 			import_channel_id: channel !== undefined ? String(channel.id) : '',
-			import_state: channel?.importState ?? 'unknown',
+			import_state: importState,
+			import_action: importActionLabel(importState),
+			import_status: importStatusLabel(importState),
 			channel_state: channel?.state ?? '',
 			source_language: channel?.spokenLanguages.join(',') ?? '',
 			ai_voice: currentVoice(Array.from(this.client.getEvent().channels.values())),

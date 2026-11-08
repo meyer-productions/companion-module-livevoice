@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { mapImportState, parseApiState, selectDefaultImportChannel, toChannel } from '../state.js'
+import {
+	importActionLabel,
+	importStatusLabel,
+	mapImportState,
+	parseApiState,
+	selectDefaultImportChannel,
+	toChannel,
+} from '../state.js'
 import type { LiveVoiceChannel } from '../types.js'
 
 function channel(partial: Partial<LiveVoiceChannel> & { id: number; name: string }): LiveVoiceChannel {
@@ -87,5 +94,21 @@ describe('selectDefaultImportChannel', () => {
 				channel({ id: 2, name: 'B', hasAudioInput: true }),
 			]),
 		).toBeUndefined()
+	})
+})
+
+describe('import labels', () => {
+	it('shows the next action on the toggle button', () => {
+		expect(importActionLabel('active')).toBe('Import stoppen')
+		expect(importActionLabel('inactive')).toBe('Import starten')
+		expect(importActionLabel('offline')).toBe('Import starten')
+		expect(importActionLabel('unknown')).toBe('Import')
+	})
+
+	it('shows the current state in the status band', () => {
+		expect(importStatusLabel('active')).toBe('LÄUFT')
+		expect(importStatusLabel('inactive')).toBe('INAKTIV')
+		expect(importStatusLabel('offline')).toBe('OFFLINE')
+		expect(importStatusLabel('unknown')).toBe('UNBEKANNT')
 	})
 })

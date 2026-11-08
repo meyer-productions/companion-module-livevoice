@@ -6,25 +6,26 @@ import type {
 	CompanionLayeredButtonPresetDefinition,
 	SomeButtonGraphicsElement,
 } from '@companion-module/base'
-import { KEY_ACTIVE_PNG64, KEY_IDLE_PNG64, KEY_OFFLINE_PNG64, KEY_UNKNOWN_PNG64 } from './key-images.js'
+import {
+	KEY_ACTIVE_PNG64,
+	KEY_IDLE_PNG64,
+	STATUS_ACTIVE_PNG64,
+	STATUS_INACTIVE_PNG64,
+	STATUS_OFFLINE_PNG64,
+	STATUS_UNKNOWN_PNG64,
+} from './key-images.js'
 import type ModuleInstance from './main.js'
 import { INPUT_LANGUAGES } from './languages.js'
 import type { ModuleSchema } from './main.js'
 
-// Key-Hintergründe aus DESIGN/Buttons/brand/keys/README-Keys.md (Icons ohne eingebrannten Text - der Text kommt
-// komplett von Companion). Für den Toggle-Button liegen alle vier Zustandsbilder übereinander gestapelt
-// (opacity immer 100, "enabled" steuert die Sichtbarkeit) - diese Struktur entspricht 1:1 dem vom Nutzer
-// exportierten, funktionierenden Referenz-Button.
+// Key-Hintergründe aus scripts/generate-keys.ts (yarn keys), Aufbau wie beim Proxmox-Modul: kleines Logo oben,
+// Text in der Mitte, unten Akzentstreifen bzw. beim Start-&-Stop-Button ein Status-Band mit eigenem Textlayer.
 //
 // WICHTIG (Stand 30.08.2026, bestätigt auf Companion 5.0.4): Modul-definierte Feedbacks auf einem 'layered'
-// Preset kommen beim Ziehen auf einen Button leer an (Feedbacks-Tab bleibt leer), auch nach diversen
-// strukturellen Varianten (mehrere gestapelte Bild-Elemente, ein einzelnes Bild-Element mit
-// base64Image-Austausch) - live verifiziert per JSON-Export-Vergleich, reproduziert nach Neuinstallation und
-// nach Companion-Update auf 5.0.4. Bestätigter offener Bug: bitfocus/companion#4410 "Linked Preset not
-// working with Advanced Feedbacks" (offen, Milestone v5.1, kein verifizierter Fix). Elemente/Steps werden
-// dagegen zuverlässig übernommen. Deshalb: Elemente exakt wie im geprüften Referenz-Button aufbauen (optisch
-// korrekt sofort nach dem Ziehen) und die 3 Feedbacks einmalig manuell in der Companion-UI ergänzen (siehe
-// HELP.md) - ein Umgehen des Bugs über eine andere Preset-Struktur hat sich nicht als möglich erwiesen.
+// Preset kommen beim Ziehen auf einen Button leer an - offener Bug bitfocus/companion#4410. Elemente/Steps
+// werden dagegen zuverlässig übernommen. Der Start-&-Stop-Button kommt deshalb ganz ohne Feedbacks aus: Texte
+// über die Variablen import_action/import_status, die Zustandsbilder über Expressions auf "enabled"
+// (Companion-Doku "Button Graphics Elements": jede Element-Eigenschaft darf eine Expression sein).
 const COLOR_TEXT_WHITE = 0xffffff
 /** Sprachen mit fertigem Preset; alle übrigen über die Aktion "Ursprungssprache setzen". */
 const PRESET_LANGUAGES = ['de', 'en', 'fr', 'it', 'es']
@@ -51,16 +52,17 @@ interface TextBounds {
 	fontsize: number
 }
 
-// Start/Stop (kürzerer, aber längerer Text "Start/Stop Import") und Toggle (nur der kurze Status-Wert) haben
-// unterschiedliche Bänder/Grössen bekommen, beide wie vom Nutzer im Companion-Editor abgestimmt (Printscreen).
-const STATIC_TEXT_BOUNDS: TextBounds = { y: 65, height: 35, fontsize: 45 }
-const TOGGLE_TEXT_BOUNDS: TextBounds = { y: 55, height: 45, fontsize: 80 }
+// Angaben in Prozent des Buttons (fontsize in Prozent der Elementhöhe). Das Logo belegt oben ca. 5-28 %, der
+// Akzentstreifen die untersten 6 %, das Status-Band die untersten 20 % (siehe scripts/generate-keys.ts).
+const STATIC_TEXT_BOUNDS: TextBounds = { y: 30, height: 63, fontsize: 25 }
+const TOGGLE_TEXT_BOUNDS: TextBounds = { y: 30, height: 50, fontsize: 32 }
+const STATUS_TEXT_BOUNDS: TextBounds = { y: 80, height: 20, fontsize: 58 }
 
-function mainTextElement(text: string, bounds: TextBounds): SomeButtonGraphicsElement {
+function mainTextElement(text: string, bounds: TextBounds, id = 'main', name = 'Haupttext'): SomeButtonGraphicsElement {
 	return {
 		type: 'text',
-		id: 'main',
-		name: 'Haupttext',
+		id,
+		name,
 		x: 0,
 		y: bounds.y,
 		width: 100,
@@ -75,6 +77,14 @@ function mainTextElement(text: string, bounds: TextBounds): SomeButtonGraphicsEl
 		color: COLOR_TEXT_WHITE,
 		halign: 'center',
 		valign: 'center',
+	}
+}
+
+/** Zustandsbild, das sichtbar ist, solange import_state den angegebenen Wert hat (Expression, ohne Feedback). */
+function importStateImage(id: string, name: string, base64: string, state: string): SomeButtonGraphicsElement {
+	return {
+		...imageElement(id, name, base64, true),
+		enabled: { isExpression: true, value: `$(livevoice:import_state) == '${state}'` },
 	}
 }
 
@@ -177,47 +187,26 @@ function buildStaticPreset(
 }
 
 export function UpdatePresets(self: ModuleInstance): void {
-	// Start & Stop: alle vier Zustandsbilder gestapelt, "idle" per Default sichtbar - exakt die Element-Struktur
-	// des vom Nutzer exportierten Referenz-Buttons. "idle" deckt auch "inactive" ab, deshalb kein eigenes
-	// importOffline-Feedback hier - es würde sich mit importInactive überlappen (importInactive ist laut
-	// Definition bei "inactive" ODER "offline" aktiv) und um denselben Vorrang konkurrieren. Das Bild
-	// "bg-offline" bleibt als Layer trotzdem vorhanden, falls manuell ein eigenes Feedback dafür ergänzt wird.
+	// Start & Stop: oben die nächste Aktion ("Import starten"/"Import stoppen"), unten das Status-Band. Das
+	// inaktive Bild liegt immer zuunterst, die übrigen werden per Expression auf import_state eingeblendet.
 	const toggleImport: CompanionLayeredButtonPresetDefinition<ModuleSchema> = {
 		type: 'layered',
 		name: 'LiveVoice Start & Stop',
 		elements: [
-			imageElement('bg-idle', 'Hintergrund (idle)', KEY_IDLE_PNG64, true),
-			imageElement('bg-active', 'Hintergrund (aktiv)', KEY_ACTIVE_PNG64, false),
-			imageElement('bg-offline', 'Hintergrund (offline)', KEY_OFFLINE_PNG64, false),
-			imageElement('bg-unknown', 'Hintergrund (unbekannt)', KEY_UNKNOWN_PNG64, false),
-			mainTextElement('$(livevoice:import_state)', TOGGLE_TEXT_BOUNDS),
+			imageElement('bg-idle', 'Hintergrund (inaktiv)', STATUS_INACTIVE_PNG64, true),
+			importStateImage('bg-offline', 'Hintergrund (offline)', STATUS_OFFLINE_PNG64, 'offline'),
+			importStateImage('bg-unknown', 'Hintergrund (unbekannt)', STATUS_UNKNOWN_PNG64, 'unknown'),
+			importStateImage('bg-active', 'Hintergrund (aktiv)', STATUS_ACTIVE_PNG64, 'active'),
+			mainTextElement('$(livevoice:import_action)', TOGGLE_TEXT_BOUNDS),
+			mainTextElement('$(livevoice:import_status)', STATUS_TEXT_BOUNDS, 'status', 'Status'),
 		],
-		feedbacks: [
-			{
-				feedbackId: 'importActive',
-				options: { channelId: 'auto' },
-				styleOverrides: showImageOverride('bg-idle', 'bg-active'),
-			},
-			{
-				feedbackId: 'importInactive',
-				options: { channelId: 'auto' },
-				styleOverrides: [
-					{ elementId: 'main', elementProperty: 'color', override: COLOR_TEXT_WHITE },
-					...showImageOverride('bg-active', 'bg-idle'),
-				],
-			},
-			{
-				feedbackId: 'importUnknown',
-				options: { channelId: 'auto' },
-				styleOverrides: showImageOverride('bg-idle', 'bg-unknown'),
-			},
-		],
+		feedbacks: [],
 		steps: buildSteps('toggleImport'),
 	}
 
 	const presets: CompanionPresetDefinitions<ModuleSchema> = {
-		startImport: buildStaticPreset('LiveVoice Start Import', 'startImport', KEY_ACTIVE_PNG64, 'Start Import'),
-		stopImport: buildStaticPreset('LiveVoice Stop Import', 'stopImport', KEY_IDLE_PNG64, 'Stop Import'),
+		startImport: buildStaticPreset('LiveVoice Import starten', 'startImport', KEY_ACTIVE_PNG64, 'Import starten'),
+		stopImport: buildStaticPreset('LiveVoice Import stoppen', 'stopImport', KEY_IDLE_PNG64, 'Import stoppen'),
 		toggleImport,
 	}
 

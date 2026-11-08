@@ -11,6 +11,8 @@ export type VariablesSchema = {
 	import_channel_name: string
 	import_channel_id: string
 	import_state: string
+	import_action: string
+	import_status: string
 	channel_state: string
 	source_language: string
 	ai_voice: string
@@ -29,6 +31,8 @@ export function UpdateVariableDefinitions(self: ModuleInstance): void {
 		import_channel_name: { name: 'Import-Channel: Name' },
 		import_channel_id: { name: 'Import-Channel: ID' },
 		import_state: { name: 'Import-Status (active/inactive/offline/unknown)' },
+		import_action: { name: 'Import: nächste Aktion (Import starten/Import stoppen)' },
+		import_status: { name: 'Import: Statustext (LÄUFT/INAKTIV/OFFLINE/UNBEKANNT)' },
 		channel_state: { name: 'Import-Channel: LiveVoice-Zustand (roh)' },
 		source_language: { name: 'Ursprungssprache des Import-Channels (z.B. de)' },
 		ai_voice: { name: 'Stimme der AI-Channels (male/female/…/gemischt)' },
